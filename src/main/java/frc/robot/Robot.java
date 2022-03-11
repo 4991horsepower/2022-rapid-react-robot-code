@@ -353,9 +353,17 @@ public class Robot extends TimedRobot {
     double front_back = reverse < 0.01 ? forward : -reverse;
     double turnVal = m_driverController.getLeftX();
 
+    double rightVel = m_rightEnc.getVelocity();
+    double leftVel = m_leftEnc.getVelocity();
+    double turnCorrect = rightVel - leftVel;
+
+
     front_back = front_back > 0 ? Math.pow(Math.abs(front_back), 2) : -Math.pow(Math.abs(front_back), 2);
     turnVal = turnVal > 0 ? 0.5*Math.pow(Math.abs(turnVal), 3) : -0.5*Math.pow(Math.abs(turnVal), 3);
     turnVal = -turnVal;
+    if (Math.abs(turnVal) < .1){
+      turnVal = turnCorrect*.01;
+    }
     double left = 0, right = 0;
     int backupType = 0;
    
