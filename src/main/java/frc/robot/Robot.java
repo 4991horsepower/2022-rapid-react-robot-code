@@ -253,7 +253,7 @@ public class Robot extends TimedRobot {
       colorString = "unknown";
     }
     m_odometry.update(Rotation2d.fromDegrees(ahrs.getAngle()), m_leftEnc.getPosition(), m_rightEnc.getPosition());
-    System.out.println(m_odometry.getPoseMeters());
+    //System.out.println(m_odometry.getPoseMeters());
   }
 
   @Override
@@ -345,7 +345,7 @@ public class Robot extends TimedRobot {
   @Override
   public void teleopPeriodic() {
     
-    System.out.println(teamColor);
+    //System.out.println(teamColor);
 
     // lame drivetrain stuff i suppose - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
     double reverse = m_driverController.getLeftTriggerAxis();
@@ -353,7 +353,7 @@ public class Robot extends TimedRobot {
     double front_back = reverse < 0.01 ? forward : -reverse;
     double turnVal = m_driverController.getLeftX();
 
-    front_back = front_back > 0 ? Math.pow(Math.abs(front_back), 2) : -Math.pow(Math.abs(front_back), 2);
+    front_back = front_back > 0 ? Math.pow(Math.abs(front_back), 3) : -Math.pow(Math.abs(front_back), 3);
     turnVal = turnVal > 0 ? 0.5*Math.pow(Math.abs(turnVal), 3) : -0.5*Math.pow(Math.abs(turnVal), 3);
     turnVal = -turnVal;
     double left = 0, right = 0;
@@ -382,8 +382,8 @@ public class Robot extends TimedRobot {
         break;
     }
 
-    m_rightPIDController.setReference(3000 * right, CANSparkMax.ControlType.kVelocity);
-    m_leftPIDController.setReference(3000 * left, CANSparkMax.ControlType.kVelocity);
+    m_frontLeft.set(left);
+    m_rearRight.set(right);
     
     // end of the lame drivetrain stuff i suppose ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^    
 
