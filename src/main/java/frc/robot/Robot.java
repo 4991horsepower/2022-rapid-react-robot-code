@@ -7,9 +7,7 @@ package frc.robot;
 import java.io.IOException;
 import java.nio.file.Path;
 
-import com.kauailabs.navx.frc.AHRS;
 import com.revrobotics.CANSparkMax;
-import com.revrobotics.CANSparkMax.IdleMode;
 import com.revrobotics.CANSparkMaxLowLevel.MotorType;
 import com.revrobotics.ColorMatch;
 import com.revrobotics.ColorMatchResult;
@@ -29,6 +27,7 @@ import edu.wpi.first.math.trajectory.TrajectoryUtil;
 import edu.wpi.first.networktables.NetworkTable;
 import edu.wpi.first.networktables.NetworkTableEntry;
 import edu.wpi.first.networktables.NetworkTableInstance;
+import edu.wpi.first.wpilibj.ADXRS450_Gyro;
 import edu.wpi.first.wpilibj.AnalogInput;
 import edu.wpi.first.wpilibj.Compressor;
 import edu.wpi.first.wpilibj.DigitalInput;
@@ -36,11 +35,11 @@ import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.Filesystem;
 import edu.wpi.first.wpilibj.I2C;
 import edu.wpi.first.wpilibj.PneumaticsModuleType;
-import edu.wpi.first.wpilibj.SerialPort;
 import edu.wpi.first.wpilibj.Solenoid;
 import edu.wpi.first.wpilibj.TimedRobot;
 import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj.XboxController;
+import edu.wpi.first.wpilibj.interfaces.Gyro;
 import edu.wpi.first.wpilibj.smartdashboard.SendableChooser;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj.util.Color;
@@ -119,7 +118,7 @@ public class Robot extends TimedRobot {
   private String teamColor;
   private String colorString;
 
-  private AHRS ahrs;
+  private Gyro m_gyro = new ADXRS450_Gyro();
 
   Trajectory trajectory = new Trajectory();
 
@@ -141,7 +140,7 @@ public class Robot extends TimedRobot {
   private boolean spinning;
 
   private DifferentialDriveOdometry m_odometry  = new DifferentialDriveOdometry(new Rotation2d(), new Pose2d());
-  private DifferentialDriveKinematics kinematics = new DifferentialDriveKinematics(0.69);
+  private DifferentialDriveKinematics kinematics = new DifferentialDriveKinematics(0.555625);
   /**
    * This function is run when the robot is first started up and should be used for any
    * initialization code.
@@ -159,9 +158,6 @@ public class Robot extends TimedRobot {
     else{
       teamColor = new String("blue");
     }
-
-    ahrs = new AHRS(SerialPort.Port.kUSB);  
-    ahrs.zeroYaw();
 
     m_chooser.setDefaultOption("Default Auto", kDefaultAuto);
     m_chooser.addOption("My Auto", kCustomAuto);
@@ -230,6 +226,8 @@ public class Robot extends TimedRobot {
 
     m_climber_enc.setPosition(0);
     m_climber_enc.setPositionConversionFactor(0.005); // 200 rev/rotation
+
+    shooterOn = false;
   }
 
   /**
@@ -252,8 +250,8 @@ public class Robot extends TimedRobot {
     else {
       colorString = "unknown";
     }
-    m_odometry.update(Rotation2d.fromDegrees(ahrs.getAngle()), m_leftEnc.getPosition(), m_rightEnc.getPosition());
-    //System.out.println(m_odometry.getPoseMeters());
+    m_odometry.update(m_gyro.getRotation2d(), m_leftEnc.getPosition(), m_rightEnc.getPosition());
+    System.out.println(m_odometry.getPoseMeters());
   }
 
   @Override
@@ -262,12 +260,12 @@ public class Robot extends TimedRobot {
     m_autoSelected = SmartDashboard.getString("Auto Selector", kDefaultAuto);
     System.out.println("Auto selected: " + m_autoSelected);
     String trajectoryJSON;
-    if(m_autoSelected.equals("My Auto"))
+    if(m_autoSelected.equals("Test"))
     {
-      trajectoryJSON = "paths/my_auto.wpilib.json";
+      trajectoryJSON = "paths/output/getBall.wpilib.json";
     }
     else {
-      trajectoryJSON = "paths/default.wpilib.json";
+      trajectoryJSON = "paths/output/getBall.wpilib.json";
     }
 
     // Moved here so we can choose a filename based on auto selected
@@ -278,37 +276,31 @@ public class Robot extends TimedRobot {
       DriverStation.reportError("Unable to open trajectory: " + trajectoryJSON, ex.getStackTrace());
     }
 
+    m_rightEnc.setPosition(0.0);
+    m_leftEnc.setPosition(0.0);
+    m_odometry.resetPosition(trajectory.getInitialPose(), m_gyro.getRotation2d());
+
     auto_timer.reset();
     auto_timer.start();
-
-    ahrs.zeroYaw();
-    m_rightEnc.setPosition(0);
-    m_rightEnc.setPosition(0);
-    m_odometry.resetPosition(new Pose2d(), new Rotation2d());
   }
 
   /** This function is called periodically during autonomous. */
   @Override
   public void autonomousPeriodic() {
 
-    //ChassisSpeeds adjustedSpeeds = ramsete.calculate(m_odometry.getPoseMeters(), trajectory.sample(auto_timer.get()));
-    //DifferentialDriveWheelSpeeds wheelSpeeds = kinematics.toWheelSpeeds(adjustedSpeeds);
-    //double left = wheelSpeeds.leftMetersPerSecond;
-    //double right = wheelSpeeds.rightMetersPerSecond;
+    Trajectory.State goal = trajectory.sample(auto_timer.get());
+    System.out.print("Goal: ");
+    System.out.println(goal);
+    ChassisSpeeds adjustedSpeeds = ramsete.calculate(m_odometry.getPoseMeters(), goal);
+    DifferentialDriveWheelSpeeds wheelSpeeds = kinematics.toWheelSpeeds(adjustedSpeeds);
+    double left = wheelSpeeds.leftMetersPerSecond * 60 / 0.0585;
+    double right = wheelSpeeds.rightMetersPerSecond * 60 / 0.0585;
 
-    //m_leftPIDController.setReference(left, CANSparkMax.ControlType.kVelocity);
-    //m_rightPIDController.setReference(right, CANSparkMax.ControlType.kVelocity);
+    //m_frontLeft.set(left);
+    //m_rearRight.set(right);
 
-    if(auto_timer.get() < 5)
-    {
-      m_leftPIDController.setReference(500, CANSparkMax.ControlType.kVelocity);
-      m_rightPIDController.setReference(500, CANSparkMax.ControlType.kVelocity);  
-    }
-    else
-    {
-      m_leftPIDController.setReference(0, CANSparkMax.ControlType.kVelocity);
-      m_rightPIDController.setReference(0, CANSparkMax.ControlType.kVelocity);  
-    }
+    m_leftPIDController.setReference(left, CANSparkMax.ControlType.kVelocity);
+    m_rightPIDController.setReference(right, CANSparkMax.ControlType.kVelocity);
 
     /*
     switch (m_autoSelected) {
@@ -321,16 +313,7 @@ public class Robot extends TimedRobot {
         // Put default auto code here
         break;
     }    
-      
-      if (auto_timer.get() >= 2){
-        m_frontLeft.set(0);
-        m_rearRight.set(0);
-      }
-      else if (auto_timer.get() < 2){
-        m_frontLeft.set(-.1);
-        m_rearRight.set(-.1);
-      }
-      */
+    */
   }
 
   /** This function is called once when teleop is enabled. */
@@ -351,11 +334,11 @@ public class Robot extends TimedRobot {
     double reverse = m_driverController.getLeftTriggerAxis();
     double forward = m_driverController.getRightTriggerAxis();
     double front_back = reverse < 0.01 ? forward : -reverse;
-    double turnVal = m_driverController.getLeftX();
+    double turnVal = -m_driverController.getLeftX();
 
     front_back = front_back > 0 ? Math.pow(Math.abs(front_back), 3) : -Math.pow(Math.abs(front_back), 3);
     turnVal = turnVal > 0 ? 0.5*Math.pow(Math.abs(turnVal), 3) : -0.5*Math.pow(Math.abs(turnVal), 3);
-    turnVal = -turnVal;
+
     double left = 0, right = 0;
     int backupType = 0;
    
@@ -466,60 +449,7 @@ public class Robot extends TimedRobot {
     
 
     // shoopter code - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    // move the bar let's gooooooooooooooooo
-/*
-    boolean frontSide = false;
-    boolean servoIsHigh = false;
-    double highBarPos; // tbd, in degrees (init 90 degrees to 0 on startup)
-    double lowBarPos; // tbd, in degrees (otherwise i'll have to do some fun trig stuff)
-    double servoCurrentPos = shooterServo.getAngle();
-    double finalServoPos;
-
-    // toggle for front/back servo positions
-    if(m_copilotController.getAButton()){
-      if(frontSide){
-       frontSide = false;
-      }
-      else{
-        frontSide = true;
-      }
-    }
-
-    // adjust servo position based on toggle
-    if(m_copilotController.getXButton()){
-      if(servoIsHigh){
-        servoIsHigh = false;
-        finalServoPos = lowBarPos;
-      }
-      else{
-        servoIsHigh = true;
-        finalServoPos = highBarPos;
-      }
-      if(!frontSide){
-        finalServoPos *= -1;
-      }
-    }
-    shooterServo.set(finalServoPos);
-
-
-    /*    old servo code (analog)
-    double servoDead = 0.1;
-    double servoMaxAngle = 180;
-    if(m_copilotContoller.getLeftY() > servoDead){
-      if(0 <= servoPos && servoPos <= servoMaxAngle){
-        servoPos = m_copilotContoller.getLeftY();
-        if(servoPos < 0){
-          servoPos = 0;
-        }
-        else if(servoPos > servoMaxAngle){
-          servoPos = servoMaxAngle;
-        }
-      }
-    }
-    shooterServo.setAngle(servoPos);
-    */                                         // BREAK IN COMMENT                
-      
-
+             
     // to use for testing motor speed (dpad)
     // POV: 0 up, 90 right, 180 down, 270 left
 /*    double motorSpeed = 0;
