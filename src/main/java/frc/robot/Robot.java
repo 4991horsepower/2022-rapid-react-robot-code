@@ -91,8 +91,10 @@ public class Robot extends TimedRobot {
   private int stage = 0; // needs to be defined in a scope outside teleop
 
   // sensor!!!!
-  private DigitalInput fwdLimitSwitch = new DigitalInput(0);
-  private DigitalInput revLimitSwitch = new DigitalInput(1);
+  private DigitalInput fwdLeftLimitSwitch = new DigitalInput(0);
+  private DigitalInput revLeftLimitSwitch = new DigitalInput(1);
+  private DigitalInput fwdRightLimitSwitch = new DigitalInput(2);
+  private DigitalInput revRightLimitSwitch = new DigitalInput(3);
 
   //lifter
   private CANSparkMax m_lifter = new CANSparkMax(7, MotorType.kBrushless);
@@ -560,7 +562,7 @@ public class Robot extends TimedRobot {
           fingy2.set(false);
           fingy3.set(true);
           fingy4.set(false);
-          if(revLimitSwitch.get() == false)
+          if((revLeftLimitSwitch.get() == false) && (revRightLimitSwitch.get() == false))
           {
             climb_timer.reset();
             stage = 2;
@@ -586,7 +588,7 @@ public class Robot extends TimedRobot {
           fingy3.set(true);
           fingy4.set(false);
 
-          if(fwdLimitSwitch.get() == false)
+          if((fwdLeftLimitSwitch.get() == false) && (fwdRightLimitSwitch.get() == false))
           {
             climb_timer.reset();
             stage = 4;
@@ -651,7 +653,7 @@ public class Robot extends TimedRobot {
           fingy2.set(false);
           fingy3.set(false);
           fingy4.set(false);
-          if(revLimitSwitch.get() == false)
+          if((revLeftLimitSwitch.get() == false) && (revRightLimitSwitch.get() == false))
           {
             climb_timer.reset();
             stage = 9;
