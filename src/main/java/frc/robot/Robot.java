@@ -51,10 +51,6 @@ import edu.wpi.first.wpilibj.util.Color;
  * project.
  */
 public class Robot extends TimedRobot {
-  private static final String kDefaultAuto = "Default";
-  private static final String kCustomAuto = "My Auto";
-  private String m_autoSelected;
-  private final SendableChooser<String> m_chooser = new SendableChooser<>();
 
   private RamseteController ramsete = new RamseteController();
 
@@ -75,8 +71,7 @@ public class Robot extends TimedRobot {
   private SparkMaxPIDController m_shooterPIDController;
 
   // climbler
-  private CANSparkMax m_climber1 = new CANSparkMax(8, MotorType.kBrushless);
-  private CANSparkMax m_climber2 = new CANSparkMax(9, MotorType.kBrushless);
+  private CANSparkMax m_climber = new CANSparkMax(8, MotorType.kBrushless);
   private RelativeEncoder m_climber_enc;
 
   // int ache
@@ -159,9 +154,8 @@ public class Robot extends TimedRobot {
       teamColor = new String("blue");
     }
 
-    m_chooser.setDefaultOption("Default Auto", kDefaultAuto);
-    m_chooser.addOption("My Auto", kCustomAuto);
-    SmartDashboard.putData("Auto choices", m_chooser);
+    String[] auto_modes = {"Auto 1", "Auto 2", "Auto 3", "Auto 4", "Auto 5"};
+    SmartDashboard.putStringArray("Auto List", auto_modes);
     
     m_frontLeft.restoreFactoryDefaults();
     m_frontRight.restoreFactoryDefaults();
@@ -186,23 +180,18 @@ public class Robot extends TimedRobot {
 
     m_leftPIDController = m_frontLeft.getPIDController();
     m_leftPIDController.setFF(0.00018);
-    m_leftPIDController.setP(0.0005);
+    m_leftPIDController.setP(0.00025);
     m_leftPIDController.setI(0.0);
     m_leftPIDController.setD(0.0);
 
     m_rightPIDController = m_rearRight.getPIDController();
     m_rightPIDController.setFF(0.00018);
-    m_rightPIDController.setP(0.0005);
+    m_rightPIDController.setP(0.00025);
     m_rightPIDController.setI(0.0);
     m_rightPIDController.setD(0.0);
 
-    m_climber1.restoreFactoryDefaults();
-    m_climber2.restoreFactoryDefaults();
-
-    m_climber2.setInverted(true);
-    m_climber2.follow(m_climber1);
-
-    m_climber_enc = m_climber1.getEncoder();
+    m_climber.restoreFactoryDefaults();
+    m_climber_enc = m_climber.getEncoder();
 
     // Shooter
     m_shooter.restoreFactoryDefaults();
@@ -225,7 +214,7 @@ public class Robot extends TimedRobot {
     spinning = false;
 
     m_climber_enc.setPosition(0);
-    m_climber_enc.setPositionConversionFactor(0.005); // 200 rev/rotation
+    m_climber_enc.setPositionConversionFactor(1.0/375.0);
 
     shooterOn = false;
   }
@@ -251,13 +240,13 @@ public class Robot extends TimedRobot {
       colorString = "unknown";
     }
     m_odometry.update(m_gyro.getRotation2d(), m_leftEnc.getPosition(), m_rightEnc.getPosition());
-    System.out.println(m_odometry.getPoseMeters());
+    //System.out.println(m_odometry.getPoseMeters());
+    SmartDashboard.putNumber("Gyro", m_gyro.getAngle());
   }
 
   @Override
   public void autonomousInit() {
-    m_autoSelected = m_chooser.getSelected();
-    m_autoSelected = SmartDashboard.getString("Auto Selector", kDefaultAuto);
+    String m_autoSelected = SmartDashboard.getString("Auto Selector", "Auto 1");
     System.out.println("Auto selected: " + m_autoSelected);
     String trajectoryJSON;
     if(m_autoSelected.equals("Test"))
@@ -289,8 +278,8 @@ public class Robot extends TimedRobot {
   public void autonomousPeriodic() {
 
     Trajectory.State goal = trajectory.sample(auto_timer.get());
-    System.out.print("Goal: ");
-    System.out.println(goal);
+    //System.out.print("Goal: ");
+    //System.out.println(goal);
     ChassisSpeeds adjustedSpeeds = ramsete.calculate(m_odometry.getPoseMeters(), goal);
     DifferentialDriveWheelSpeeds wheelSpeeds = kinematics.toWheelSpeeds(adjustedSpeeds);
     double left = wheelSpeeds.leftMetersPerSecond * 60 / 0.0585;
@@ -554,12 +543,11 @@ public class Robot extends TimedRobot {
     */
 
     // set fingers to one side open, rotate right side up to hit bar (so that only fingy1 hits the bar)
-    // note: m_climber2 is set to follow m_climber1...only type m_climber1
     if(m_copilotContoller.getStartButton()){
       switch(stage){
         case 0:
             // Rotate climber to vertical (-0.25 revolutions)
-          m_climber1.set(0.25);
+          m_climber.set(0.25);
           if(m_climber_enc.getPosition() >= 0.25)
           {
             stage = 1;
@@ -567,23 +555,23 @@ public class Robot extends TimedRobot {
           break;
         case 1:
           // Climber is in position, close fingy 2
-          m_climber1.set(0);
+          m_climber.set(0);
           fingy1.set(true);
           fingy2.set(false);
           fingy3.set(true);
           fingy4.set(false);
-          if(fwdLimitSwitch.get() == false)
+          if(revLimitSwitch.get() == false)
           {
             climb_timer.reset();
             stage = 2;
           }
           break;
         case 2:
-          // Give it a second to fully close fingy 1
-          m_climber1.set(0);
-          fingy1.set(true);
+          // Give it a second to fully close fingy 3
+          m_climber.set(0);
+          fingy1.set(false);
           fingy2.set(false);
-          fingy3.set(false);
+          fingy3.set(true);
           fingy4.set(false);   
           if(climb_timer.get() > 1.0)
           {
@@ -592,13 +580,13 @@ public class Robot extends TimedRobot {
           break;
         case 3:
           // Rotate until in the next position, close fingy 3 for stopping point on rotation
-          m_climber1.set(-1);
-          fingy1.set(true);
+          m_climber.set(-1.0);
+          fingy1.set(false);
           fingy2.set(false);
-          fingy3.set(false);
+          fingy3.set(true);
           fingy4.set(false);
 
-          if(revLimitSwitch.get() == false)
+          if(fwdLimitSwitch.get() == false)
           {
             climb_timer.reset();
             stage = 4;
@@ -606,7 +594,7 @@ public class Robot extends TimedRobot {
           break;
         case 4:
           // Close fingy 1
-          m_climber1.set(0);
+          m_climber.set(0);
           fingy1.set(false);
           fingy2.set(false);
           fingy3.set(false);
@@ -619,7 +607,7 @@ public class Robot extends TimedRobot {
           break;
         case 5:
           // Release fingy 2 and 3
-          m_climber1.set(0);
+          m_climber.set(0);
           fingy1.set(true);
           fingy2.set(false);
           fingy3.set(false);
@@ -627,25 +615,104 @@ public class Robot extends TimedRobot {
           if(climb_timer.get() > 1.0)
           {
             climb_timer.reset();
-            stage = 2;
+            stage = 6;
           }
+          break;
         case 6:
-           // Close fingy 2
-           m_climber1.set(-1);
-           fingy1.set(false);
-           fingy2.set(false);
-           fingy3.set(true);
-           fingy4.set(false);
-           if(fwdLimitSwitch.get() == false)
-           {
+          // Bounce the robot to unlock the finger
+          m_climber.set(1);
+          fingy1.set(true);
+          fingy2.set(false);
+          fingy3.set(false);
+          fingy4.set(true);       
+          if(climb_timer.get() > 0.25)
+          {
             climb_timer.reset();
-             stage = 2;
-           }
-           break;
+            stage = 7;
+          }
+          break;
+        case 7:
+          // Bounce the robot to unlock the finger
+          m_climber.set(-1);
+          fingy1.set(true);
+          fingy2.set(false);
+          fingy3.set(false);
+          fingy4.set(true);       
+          if(climb_timer.get() > 0.25)
+          {
+            climb_timer.reset();
+            stage = 8;
+          }
+          break;
+        case 8:
+          // Climber is in position, close fingy 2
+          m_climber.set(-1.0);
+          fingy1.set(true);
+          fingy2.set(false);
+          fingy3.set(false);
+          fingy4.set(false);
+          if(revLimitSwitch.get() == false)
+          {
+            climb_timer.reset();
+            stage = 9;
+          }
+          break;
+        case 9:
+        // Close all fingers
+          m_climber.set(0);
+          fingy1.set(false);
+          fingy2.set(false);
+          fingy3.set(false);
+          fingy4.set(false);
+          if(climb_timer.get() > 1.0)
+          {
+            climb_timer.reset();
+            stage = 10;
+          }
+          break;
+        case 10:
+          // Release fingers 2 and 3
+            m_climber.set(0);
+            fingy1.set(false);
+            fingy2.set(true);
+            fingy3.set(true);
+            fingy4.set(false);
+            if(climb_timer.get() > 1.0)
+            {
+              climb_timer.reset();
+              stage = 11;
+            }
+            break;
+        case 11:
+            // Bounce the robot to unlock the finger
+            m_climber.set(1);
+            fingy1.set(true);
+            fingy2.set(false);
+            fingy3.set(false);
+            fingy4.set(true);       
+            if(climb_timer.get() > 0.25)
+            {
+              climb_timer.reset();
+              stage = 12;
+            }
+            break;
+          case 12:
+            // Bounce the robot to unlock the finger
+            m_climber.set(-1);
+            fingy1.set(true);
+            fingy2.set(false);
+            fingy3.set(false);
+            fingy4.set(true);       
+            if(climb_timer.get() > 0.25)
+            {
+              climb_timer.reset();
+              stage = 3;
+            }
+            break;
       }
     }
     else{
-      m_climber1.set(0);
+      m_climber.set(0);
     }
     // end climbler code ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
     // ^ since this comment is related to the climber, please don't put it outside the teleop call
@@ -674,7 +741,7 @@ public class Robot extends TimedRobot {
     if(Math.abs(manual_climber) < 0.1){
       manual_climber = 0;
     }
-    m_climber1.set(manual_climber);
+    m_climber.set(manual_climber);
   
   if(m_copilotContoller.getPOV() == 0){
     fingy1.set(true);
