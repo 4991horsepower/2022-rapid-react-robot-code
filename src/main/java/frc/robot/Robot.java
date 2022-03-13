@@ -4,8 +4,12 @@
 
 package frc.robot;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.StringTokenizer;
 
 import com.revrobotics.CANSparkMax;
 import com.revrobotics.CANSparkMaxLowLevel.MotorType;
@@ -40,7 +44,6 @@ import edu.wpi.first.wpilibj.TimedRobot;
 import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj.XboxController;
 import edu.wpi.first.wpilibj.interfaces.Gyro;
-import edu.wpi.first.wpilibj.smartdashboard.SendableChooser;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj.util.Color;
 
@@ -106,18 +109,20 @@ public class Robot extends TimedRobot {
   private Compressor compressorator = new Compressor(PneumaticsModuleType.REVPH);
   
   //color boi
-  private final I2C.Port i2cPort = I2C.Port.kOnboard;
+  private I2C.Port i2cPort = I2C.Port.kOnboard;
   private ColorSensorV3 colorBoi = new ColorSensorV3(i2cPort);  
-  private final ColorMatch m_colorMatcher = new ColorMatch();
-  private final Color kBlueTarget = new Color(0.143, 0.427, 0.429); //values subject to change
-  private final Color kRedTarget = new Color(0.561, 0.232, 0.114);
+  private ColorMatch m_colorMatcher = new ColorMatch();
+  private Color kBlueTarget = new Color(0.143, 0.427, 0.429); //values subject to change
+  private Color kRedTarget = new Color(0.561, 0.232, 0.114);
 
   private String teamColor;
   private String colorString;
 
+  // Autonomous Mode
   private Gyro m_gyro = new ADXRS450_Gyro();
-
-  Trajectory trajectory = new Trajectory();
+  private HashMap<String, Trajectory> trajectories = new HashMap<String, Trajectory>();
+  private enum autoStates {GET_BALL, PICK_UP_BALL, GO_BACK, SHOOT, STOP};
+  private autoStates autoState;
 
   // timer
   private Timer auto_timer = new Timer();
@@ -258,27 +263,36 @@ public class Robot extends TimedRobot {
   public void autonomousInit() {
     String m_autoSelected = SmartDashboard.getString("Auto Selector", "Auto 1");
     System.out.println("Auto selected: " + m_autoSelected);
-    String trajectoryJSON;
-    if(m_autoSelected.equals("Test"))
-    {
-      trajectoryJSON = "paths/output/getBall.wpilib.json";
-    }
-    else {
-      trajectoryJSON = "paths/output/getBall.wpilib.json";
-    }
+    
 
-    // Moved here so we can choose a filename based on auto selected
-    try {
-      Path trajectoryPath = Filesystem.getDeployDirectory().toPath().resolve(trajectoryJSON);
-      trajectory = TrajectoryUtil.fromPathweaverJson(trajectoryPath);
-    } catch (IOException ex) {
-      DriverStation.reportError("Unable to open trajectory: " + trajectoryJSON, ex.getStackTrace());
+    String path = Filesystem.getDeployDirectory().toPath().resolve("paths/output").toString();
+    File trajectory_dir = new File(path);
+    File[] trajectoryJSON = trajectory_dir.listFiles();
+
+    for(int i = 0; i < trajectoryJSON.length; i++){   
+      try {
+        Trajectory trajectory = new Trajectory();
+        Path trajectoryPath = Filesystem.getDeployDirectory().toPath().resolve(trajectoryJSON[i].getAbsolutePath());
+        trajectory = TrajectoryUtil.fromPathweaverJson(trajectoryPath);
+        StringTokenizer st = new StringTokenizer(trajectoryJSON[i].getName());
+        trajectories.put(st.nextToken("."), trajectory);
+      } catch (IOException ex) {
+        DriverStation.reportError("Unable to open trajectory: " + trajectoryJSON[i].getName(), ex.getStackTrace());
+      }
     }
 
     m_rightEnc.setPosition(0.0);
     m_leftEnc.setPosition(0.0);
-    m_odometry.resetPosition(trajectory.getInitialPose(), m_gyro.getRotation2d());
 
+    if(m_autoSelected.equals("Auto 1"))
+    {
+      autoState = autoStates.GET_BALL;
+      m_odometry.resetPosition(trajectories.get("getBall").getInitialPose(), m_gyro.getRotation2d());
+    }
+    else {
+      autoState = autoStates.STOP;
+      m_odometry.resetPosition(new Pose2d(), m_gyro.getRotation2d());
+    }
     auto_timer.reset();
     auto_timer.start();
   }
@@ -287,32 +301,59 @@ public class Robot extends TimedRobot {
   @Override
   public void autonomousPeriodic() {
 
-    Trajectory.State goal = trajectory.sample(auto_timer.get());
-    //System.out.print("Goal: ");
-    //System.out.println(goal);
-    ChassisSpeeds adjustedSpeeds = ramsete.calculate(m_odometry.getPoseMeters(), goal);
-    DifferentialDriveWheelSpeeds wheelSpeeds = kinematics.toWheelSpeeds(adjustedSpeeds);
-    double left = wheelSpeeds.leftMetersPerSecond * 60 / 0.0585;
-    double right = wheelSpeeds.rightMetersPerSecond * 60 / 0.0585;
+    Trajectory active_trajectory = null;
 
-    //m_frontLeft.set(left);
-    //m_rearRight.set(right);
-
-    m_leftPIDController.setReference(left, CANSparkMax.ControlType.kVelocity);
-    m_rightPIDController.setReference(right, CANSparkMax.ControlType.kVelocity);
-
-    /*
-    switch (m_autoSelected) {
-      case kCustomAuto:
-        // Put custom auto code here 
-        
+    switch(autoState) {
+      case GET_BALL:
+        active_trajectory = trajectories.get("getBall");
+        if(auto_timer.get() > active_trajectory.getTotalTimeSeconds() + 0.5)
+        {
+          autoState = autoStates.PICK_UP_BALL;
+          auto_timer.reset();
+        }
         break;
-      case kDefaultAuto:
+      case PICK_UP_BALL:
+        if(auto_timer.get() > 5)
+        {
+          autoState = autoStates.GO_BACK;
+          auto_timer.reset();
+        }
+        break;
+      case GO_BACK:
+        active_trajectory = trajectories.get("goBack");
+        if(auto_timer.get() > active_trajectory.getTotalTimeSeconds() + 0.5)
+        {
+          autoState = autoStates.SHOOT;
+          auto_timer.reset();
+        }
+        break;
+      case SHOOT:
+        if(auto_timer.get() > 5)
+        {
+          autoState = autoStates.STOP;
+          auto_timer.reset();
+        }
+        break;
+      case STOP:
+        break;
       default:
-        // Put default auto code here
+        autoState = autoStates.STOP;
         break;
-    }    
-    */
+    }
+    if(active_trajectory != null){
+      Trajectory.State goal = active_trajectory.sample(auto_timer.get());
+      ChassisSpeeds adjustedSpeeds = ramsete.calculate(m_odometry.getPoseMeters(), goal);
+      DifferentialDriveWheelSpeeds wheelSpeeds = kinematics.toWheelSpeeds(adjustedSpeeds);
+      double left = wheelSpeeds.leftMetersPerSecond * 60 / 0.0585;
+      double right = wheelSpeeds.rightMetersPerSecond * 60 / 0.0585;
+      m_leftPIDController.setReference(left, CANSparkMax.ControlType.kVelocity);
+      m_rightPIDController.setReference(right, CANSparkMax.ControlType.kVelocity);
+    }
+    else
+    {
+      m_leftPIDController.setReference(0.0, CANSparkMax.ControlType.kVelocity);
+      m_rightPIDController.setReference(0.0, CANSparkMax.ControlType.kVelocity);
+    }
   }
 
   /** This function is called once when teleop is enabled. */
