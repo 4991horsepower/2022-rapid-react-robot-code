@@ -7,7 +7,6 @@ package frc.robot;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.StringTokenizer;
 
@@ -98,6 +97,11 @@ public class Robot extends TimedRobot {
   private DigitalInput revLeftLimitSwitch = new DigitalInput(1);
   private DigitalInput fwdRightLimitSwitch = new DigitalInput(2);
   private DigitalInput revRightLimitSwitch = new DigitalInput(3);
+
+  private boolean fwdLeftLimitSwitch_l = false;
+  private boolean revLeftLimitSwitch_l = false;
+  private boolean fwdRightLimitSwitch_l = false;
+  private boolean revRightLimitSwitch_l = false;
 
   //lifter
   private CANSparkMax m_lifter = new CANSparkMax(7, MotorType.kBrushless);
@@ -568,10 +572,10 @@ public class Robot extends TimedRobot {
           }
           break;
         case 1:
-          // Climber is in position, close fingy 2
+          // Climber is in position, open fingy 1, 2, and 3
           m_climber.set(0);
           fingy1.set(true);
-          fingy2.set(false);
+          fingy2.set(true);
           fingy3.set(true);
           fingy4.set(false);
           if((revLeftLimitSwitch.get() == false) && (revRightLimitSwitch.get() == false))
@@ -581,36 +585,40 @@ public class Robot extends TimedRobot {
           }
           break;
         case 2:
-          // Give it a second to fully close fingy 3
+          // Give it a second to fully close fingy 1
           m_climber.set(0);
           fingy1.set(false);
-          fingy2.set(false);
+          fingy2.set(true);
           fingy3.set(true);
           fingy4.set(false);   
           if(climb_timer.get() > 1.0)
           {
             stage = 3;
+            fwdLeftLimitSwitch_l = false;
+            fwdRightLimitSwitch_l = false;
           } 
           break;
         case 3:
-          // Rotate until in the next position, close fingy 3 for stopping point on rotation
+          // Rotate until in the next position, keep both fingies 2 and 3 open (go past the bar)
           m_climber.set(-1.0);
           fingy1.set(false);
-          fingy2.set(false);
+          fingy2.set(true);
           fingy3.set(true);
           fingy4.set(false);
 
-          if((fwdLeftLimitSwitch.get() == false) && (fwdRightLimitSwitch.get() == false))
+          fwdLeftLimitSwitch_l |= (fwdLeftLimitSwitch.get() == false);
+          fwdRightLimitSwitch_l |= (fwdRightLimitSwitch.get() == false);
+
+          if(fwdLeftLimitSwitch_l && fwdRightLimitSwitch_l)
           {
             climb_timer.reset();
             stage = 4;
           }
-          break;
         case 4:
-          // Close fingy 1
-          m_climber.set(0);
+          // Give fingy 3 a second to extend
+          m_climber.set(-1.0);
           fingy1.set(false);
-          fingy2.set(false);
+          fingy2.set(true);
           fingy3.set(false);
           fingy4.set(false);
           if(climb_timer.get() > 1.0)
@@ -620,7 +628,34 @@ public class Robot extends TimedRobot {
           }
           break;
         case 5:
-          // Release fingy 2 and 3
+          // Drift back to the bar
+          m_climber.set(0.0);
+          fingy1.set(false);
+          fingy2.set(true);
+          fingy3.set(false);
+          fingy4.set(false);
+
+          if((fwdLeftLimitSwitch.get() == false) && (fwdRightLimitSwitch.get() == false))
+          {
+            climb_timer.reset();
+            stage = 6;
+          }
+          break;
+        case 6:
+          // Grab with all fingies, give it a second to close
+          m_climber.set(0);
+          fingy1.set(false);
+          fingy2.set(false);
+          fingy3.set(false);
+          fingy4.set(false);
+          if(climb_timer.get() > 1.0)
+          {
+            climb_timer.reset();
+            stage = 7;
+          }
+          break;
+        case 7:
+          // Release fingy 1 and 4
           m_climber.set(0);
           fingy1.set(true);
           fingy2.set(false);
@@ -629,12 +664,12 @@ public class Robot extends TimedRobot {
           if(climb_timer.get() > 1.0)
           {
             climb_timer.reset();
-            stage = 6;
+            stage = 8;
           }
           break;
-        case 6:
-          // Bounce the robot to unlock the finger
-          m_climber.set(1);
+        case 8:
+          // Bounce the robot up to unlock the finger
+          m_climber.set(1.0);
           fingy1.set(true);
           fingy2.set(false);
           fingy3.set(false);
@@ -642,11 +677,11 @@ public class Robot extends TimedRobot {
           if(climb_timer.get() > 0.25)
           {
             climb_timer.reset();
-            stage = 7;
+            stage = 9;
           }
           break;
-        case 7:
-          // Bounce the robot to unlock the finger
+        case 9:
+          // Bounce the robot down to unlock the finger
           m_climber.set(-1);
           fingy1.set(true);
           fingy2.set(false);
@@ -654,24 +689,55 @@ public class Robot extends TimedRobot {
           fingy4.set(true);       
           if(climb_timer.get() > 0.25)
           {
-            climb_timer.reset();
-            stage = 8;
+            revLeftLimitSwitch_l = false;
+            revRightLimitSwitch_l = false;
+            stage = 10;
           }
           break;
-        case 8:
-          // Climber is in position, close fingy 2
+        case 10:
+          // Sweeping around with fingies 1 and 4 open
           m_climber.set(-1.0);
           fingy1.set(true);
           fingy2.set(false);
           fingy3.set(false);
-          fingy4.set(false);
+          fingy4.set(true);
+
+          revLeftLimitSwitch_l |= (revLeftLimitSwitch.get() == false);
+          revRightLimitSwitch_l |= (revRightLimitSwitch.get() == false);
+
+          if(revLeftLimitSwitch_l && revRightLimitSwitch_l)
+          {
+            climb_timer.reset();
+            stage = 11;
+          }
+        case 11:
+          // Give fingy 1 a second to extend
+          m_climber.set(-1.0);
+          fingy1.set(false);
+          fingy2.set(false);
+          fingy3.set(false);
+          fingy4.set(true);
+          if(climb_timer.get() > 1.0)
+          {
+            climb_timer.reset();
+            stage = 12;
+          }
+          break;
+        case 12:
+          // Drift back to the bar
+          m_climber.set(0.0);
+          fingy1.set(false);
+          fingy2.set(false);
+          fingy3.set(false);
+          fingy4.set(true);
+
           if((revLeftLimitSwitch.get() == false) && (revRightLimitSwitch.get() == false))
           {
             climb_timer.reset();
-            stage = 9;
+            stage = 13;
           }
           break;
-        case 9:
+        case 13:
         // Close all fingers
           m_climber.set(0);
           fingy1.set(false);
@@ -681,48 +747,49 @@ public class Robot extends TimedRobot {
           if(climb_timer.get() > 1.0)
           {
             climb_timer.reset();
-            stage = 10;
+            stage = 14;
           }
           break;
-        case 10:
+        case 14:
           // Release fingers 2 and 3
-            m_climber.set(0);
-            fingy1.set(false);
-            fingy2.set(true);
-            fingy3.set(true);
-            fingy4.set(false);
-            if(climb_timer.get() > 1.0)
-            {
-              climb_timer.reset();
-              stage = 11;
-            }
-            break;
-        case 11:
-            // Bounce the robot to unlock the finger
-            m_climber.set(1);
-            fingy1.set(true);
-            fingy2.set(false);
-            fingy3.set(false);
-            fingy4.set(true);       
-            if(climb_timer.get() > 0.25)
-            {
-              climb_timer.reset();
-              stage = 12;
-            }
-            break;
-          case 12:
-            // Bounce the robot to unlock the finger
-            m_climber.set(-1);
-            fingy1.set(true);
-            fingy2.set(false);
-            fingy3.set(false);
-            fingy4.set(true);       
-            if(climb_timer.get() > 0.25)
-            {
-              climb_timer.reset();
-              stage = 3;
-            }
-            break;
+          m_climber.set(0);
+          fingy1.set(false);
+          fingy2.set(true);
+          fingy3.set(true);
+          fingy4.set(false);
+          if(climb_timer.get() > 1.0)
+          {
+            climb_timer.reset();
+            stage = 15;
+          }
+          break;
+        case 15:
+          // Bounce the robot up to unlock the finger
+          m_climber.set(1);
+          fingy1.set(true);
+          fingy2.set(false);
+          fingy3.set(false);
+          fingy4.set(true);       
+          if(climb_timer.get() > 0.25)
+          {
+            climb_timer.reset();
+            stage = 16;
+          }
+          break;
+        case 16:
+          // Bounce the robot down to unlock the finger
+          m_climber.set(-1);
+          fingy1.set(true);
+          fingy2.set(false);
+          fingy3.set(false);
+          fingy4.set(true);       
+          if(climb_timer.get() > 0.25)
+          {
+            fwdLeftLimitSwitch_l = false;
+            fwdRightLimitSwitch_l = false;
+            stage = 3;
+          }
+          break;
       }
     }
     else{
