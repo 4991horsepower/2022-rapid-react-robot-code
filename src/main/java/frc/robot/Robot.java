@@ -78,7 +78,7 @@ public class Robot extends TimedRobot {
   private CANSparkMax m_intake = new CANSparkMax(5, MotorType.kBrushless);
 
   // soul annoyed (intake)
-  private Solenoid intake1 = new Solenoid(PneumaticsModuleType.REVPH, 0);
+  private Solenoid s_intake = new Solenoid(PneumaticsModuleType.REVPH, 0);
  
   //kicker
   private Solenoid kicker = new Solenoid(PneumaticsModuleType.REVPH, 5);
@@ -138,6 +138,11 @@ public class Robot extends TimedRobot {
 
   private DifferentialDriveOdometry m_odometry  = new DifferentialDriveOdometry(new Rotation2d(), new Pose2d());
   private DifferentialDriveKinematics kinematics = new DifferentialDriveKinematics(0.555625);
+
+  private Double cam_tx;
+  private Double cam_ty;
+  private Boolean cam_tv;
+
   /**
    * This function is run when the robot is first started up and should be used for any
    * initialization code.
@@ -242,8 +247,11 @@ public class Robot extends TimedRobot {
       colorString = "unknown";
     }
     m_odometry.update(m_gyro.getRotation2d(), m_leftEnc.getPosition(), m_rightEnc.getPosition());
-    //System.out.println(m_odometry.getPoseMeters());
     SmartDashboard.putNumber("Gyro", m_gyro.getAngle());
+
+    cam_tx = NetworkTableInstance.getDefault().getTable("limelight").getEntry("tx").getDouble(0);
+    cam_ty = NetworkTableInstance.getDefault().getTable("limelight").getEntry("ty").getDouble(0);
+    cam_tv = NetworkTableInstance.getDefault().getTable("limelight").getEntry("tv").getBoolean(false);
   }
 
   @Override
@@ -372,19 +380,16 @@ public class Robot extends TimedRobot {
    }
 
    intakeToggle_prev = intakeToggle;
-   intake1.set(intakeToggle);
+   s_intake.set(intakeToggle);
 
     // only let motor spin if intake is out
     if(/*!intakeIn && */motorOn){
-      m_intake.set(-.5); // edit for correct rotation direction (linear relationship)
+      m_intake.set(-0.5); // edit for correct rotation direction (linear relationship)
     }
     else {
       m_intake.set(0);
     }
-    
     // end int ache code ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-
 
     // belt code - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
     boolean beltForward = m_copilotContoller.getYButton();
@@ -435,8 +440,7 @@ public class Robot extends TimedRobot {
       }
     }
   }
-
-    // end belt code ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  // end belt code ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
     
 
     // shoopter code - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -496,41 +500,8 @@ public class Robot extends TimedRobot {
    // System.out.println(ball_detect.getAverageValue());
   //  }   
     // end shoopter code ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-   
-    // fingy test code //////////////////////////////////////////////////////////////////////////////////////////
-
-
-    if(m_copilotContoller.getPOV() == 0){
-      fingy1.set(true);
-      fingy2.set(false);
-      fingy3.set(false);
-      fingy4.set(false);
-    }
-    else if(m_copilotContoller.getPOV() == 90){
-      fingy1.set(false);
-      fingy2.set(true);
-      fingy3.set(false);
-      fingy4.set(false);
-    }
-    else if(m_copilotContoller.getPOV() == 180){
-      fingy1.set(false);
-      fingy2.set(false);
-      fingy3.set(true);
-      fingy4.set(false);
-    }
-    else if(m_copilotContoller.getPOV() == 270){
-      fingy1.set(false);
-      fingy2.set(false);
-      fingy3.set(false);
-      fingy4.set(true);
-    }
-
-    // end fingy test code ///////////////////////////////////////////////////////////////////////////////////
-
 
     // climbler code - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
-
-
     // climber code by ethan            
     // finger setup: 1 and 2 on one side; when the robot faces right, 1 and 2 start on the right
     // false is open and true is closed
@@ -719,8 +690,6 @@ public class Robot extends TimedRobot {
     // end climbler code ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
     // ^ since this comment is related to the climber, please don't put it outside the teleop call
   } 
-
-
 
   /** This function is called once when the robot is disabled. */
 
