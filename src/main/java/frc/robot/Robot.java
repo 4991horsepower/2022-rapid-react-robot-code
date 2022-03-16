@@ -10,8 +10,6 @@ import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.StringTokenizer;
 
-import javax.lang.model.util.ElementScanner6;
-
 import com.revrobotics.CANSparkMax;
 import com.revrobotics.CANSparkMaxLowLevel.MotorType;
 import com.revrobotics.ColorMatch;
@@ -98,10 +96,10 @@ public class Robot extends TimedRobot {
   private int stage = 0; // needs to be defined in a scope outside teleop
 
   // sensor!!!!
-  private DigitalInput fwdLeftLimitSwitch = new DigitalInput(0);
-  private DigitalInput revLeftLimitSwitch = new DigitalInput(1);
-  private DigitalInput fwdRightLimitSwitch = new DigitalInput(2);
-  private DigitalInput revRightLimitSwitch = new DigitalInput(3);
+  private DigitalInput revLeftLimitSwitch = new DigitalInput(0);
+  private DigitalInput fwdLeftLimitSwitch = new DigitalInput(1);
+  private DigitalInput revRightLimitSwitch = new DigitalInput(2);
+  private DigitalInput fwdRightLimitSwitch = new DigitalInput(3);
 
   private boolean fwdLeftLimitSwitch_l = false;
   private boolean revLeftLimitSwitch_l = false;
@@ -384,15 +382,15 @@ public class Robot extends TimedRobot {
   /** This function is called periodically during operator control. */
   @Override
   public void teleopPeriodic() {
-    System.out.println(teamColor);
+    //System.out.println(teamColor);
     // lame drivetrain stuff i suppose - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
     double reverse = m_driverController.getLeftTriggerAxis();
     double forward = m_driverController.getRightTriggerAxis();
     double front_back = reverse < 0.01 ? forward : -reverse;
     double turnVal = -m_driverController.getLeftX();
 
-
     front_back = front_back > 0 ? Math.pow(Math.abs(front_back), 3) : -Math.pow(Math.abs(front_back), 3);
+    turnVal = turnVal > 0 ? 0.5*Math.pow(Math.abs(turnVal), 3) : -0.5*Math.pow(Math.abs(turnVal), 3);
 
     double left = 0, right = 0;
     int backupType = 1;
