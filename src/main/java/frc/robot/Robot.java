@@ -10,6 +10,8 @@ import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.StringTokenizer;
 
+import javax.lang.model.util.ElementScanner6;
+
 import com.revrobotics.CANSparkMax;
 import com.revrobotics.CANSparkMaxLowLevel.MotorType;
 import com.revrobotics.ColorMatch;
@@ -18,6 +20,7 @@ import com.revrobotics.ColorSensorV3;
 import com.revrobotics.RelativeEncoder;
 import com.revrobotics.SparkMaxPIDController;
 
+import edu.wpi.first.cameraserver.CameraServer;
 import edu.wpi.first.math.controller.RamseteController;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
@@ -65,12 +68,14 @@ public class Robot extends TimedRobot {
   private CANSparkMax m_rearRight = new CANSparkMax(4, MotorType.kBrushless);
   private RelativeEncoder m_leftEnc;
   private RelativeEncoder m_rightEnc;
+  private RelativeEncoder m_shooterEnc;
   private SparkMaxPIDController m_leftPIDController;
   private SparkMaxPIDController m_rightPIDController;
 
   // shoopter
   private CANSparkMax m_shooter = new CANSparkMax(10, MotorType.kBrushless);
   private SparkMaxPIDController m_shooterPIDController;
+  private double shooterTargetSpeed;
 
   // climbler
   private CANSparkMax m_climber = new CANSparkMax(8, MotorType.kBrushless);
@@ -128,9 +133,10 @@ public class Robot extends TimedRobot {
   private enum autoStates {GET_BALL, PICK_UP_BALL, GO_BACK, SHOOT, STOP};
   private autoStates autoState;
 
-  // timer
+  // timers
   private Timer auto_timer = new Timer();
   private Timer climb_timer = new Timer();
+  private Timer tele_timer = new Timer();
 
   //analog
   private AnalogInput ball_detect = new AnalogInput(0);
@@ -143,14 +149,13 @@ public class Robot extends TimedRobot {
   private boolean intakeToggle_prev;
   private boolean shooterToggle_prev;
   private boolean shooterOn;
-  private boolean spinning;
 
   private DifferentialDriveOdometry m_odometry  = new DifferentialDriveOdometry(new Rotation2d(), new Pose2d());
   private DifferentialDriveKinematics kinematics = new DifferentialDriveKinematics(0.555625);
 
   private Double cam_tx;
   private Double cam_ty;
-  private Boolean cam_tv;
+  private Double cam_tv;
 
   /**
    * This function is run when the robot is first started up and should be used for any
@@ -158,6 +163,8 @@ public class Robot extends TimedRobot {
    */
   @Override
   public void robotInit() {
+
+    CameraServer.startAutomaticCapture();
 
     NetworkTableInstance NetTableInst = NetworkTableInstance.getDefault();
     NetworkTable table = NetTableInst.getTable("FMSInfo");
@@ -186,6 +193,12 @@ public class Robot extends TimedRobot {
     m_rearLeft.follow(m_frontLeft);
     m_frontRight.follow(m_rearRight);
 
+    m_frontLeft.setClosedLoopRampRate(0.05);
+    m_rearRight.setClosedLoopRampRate(0.05);
+    m_frontLeft.setOpenLoopRampRate(0.05);
+    m_rearRight.setOpenLoopRampRate(0.05);
+
+
     m_leftEnc = m_frontLeft.getEncoder();
     m_leftEnc.setPositionConversionFactor(0.0585);
     m_leftEnc.setPosition(0.0);
@@ -212,27 +225,27 @@ public class Robot extends TimedRobot {
     // Shooter
     m_shooter.restoreFactoryDefaults();
     m_shooter.setInverted(true);
+    m_shooter.setClosedLoopRampRate(0.1);
+    m_shooterEnc = m_shooter.getEncoder();
     m_shooterPIDController = m_shooter.getPIDController();
     m_shooterPIDController.setFF(0.00025);
     m_shooterPIDController.setP(0.0008);
     m_shooterPIDController.setI(0.0);
     m_shooterPIDController.setD(0.0);
-    m_shooterPIDController.setOutputRange(-0.1, 1);
     
     //colorator
     m_colorMatcher.addColorMatch(kBlueTarget);
     m_colorMatcher.addColorMatch(kRedTarget);
     m_colorMatcher.setConfidenceThreshold(.2);
 
-    compressorator.enableAnalog(100, 120);
-
-    intakeIn = true;
-    spinning = false;
+    compressorator.enableAnalog(100, 115);
 
     m_climber_enc.setPosition(0);
-    m_climber_enc.setPositionConversionFactor(1.0/375.0);
+    m_climber_enc.setPositionConversionFactor(1.0/400.0);
 
+    intakeIn = true;
     shooterOn = false;
+    shooterTargetSpeed = 0;
   }
 
   /**
@@ -258,17 +271,12 @@ public class Robot extends TimedRobot {
     m_odometry.update(m_gyro.getRotation2d(), m_leftEnc.getPosition(), m_rightEnc.getPosition());
     SmartDashboard.putNumber("Gyro", m_gyro.getAngle());
 
-    cam_tx = NetworkTableInstance.getDefault().getTable("limelight").getEntry("tx").getDouble(0);
-    cam_ty = NetworkTableInstance.getDefault().getTable("limelight").getEntry("ty").getDouble(0);
-    cam_tv = NetworkTableInstance.getDefault().getTable("limelight").getEntry("tv").getBoolean(false);
   }
 
   @Override
   public void autonomousInit() {
     String m_autoSelected = SmartDashboard.getString("Auto Selector", "Auto 1");
     System.out.println("Auto selected: " + m_autoSelected);
-    
-
     String path = Filesystem.getDeployDirectory().toPath().resolve("paths/output").toString();
     File trajectory_dir = new File(path);
     File[] trajectoryJSON = trajectory_dir.listFiles();
@@ -364,6 +372,11 @@ public class Robot extends TimedRobot {
   @Override
   public void teleopInit() {
     stage = 0;
+    intakeIn = true;
+    shooterOn = false;
+    shooterTargetSpeed = 0;
+
+    tele_timer.start();
     climb_timer.start();
     m_climber_enc.setPosition(0);
   }
@@ -371,20 +384,18 @@ public class Robot extends TimedRobot {
   /** This function is called periodically during operator control. */
   @Override
   public void teleopPeriodic() {
-    
-    //System.out.println(teamColor);
-
+    System.out.println(teamColor);
     // lame drivetrain stuff i suppose - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
     double reverse = m_driverController.getLeftTriggerAxis();
     double forward = m_driverController.getRightTriggerAxis();
     double front_back = reverse < 0.01 ? forward : -reverse;
     double turnVal = -m_driverController.getLeftX();
 
+
     front_back = front_back > 0 ? Math.pow(Math.abs(front_back), 3) : -Math.pow(Math.abs(front_back), 3);
-    turnVal = turnVal > 0 ? 0.5*Math.pow(Math.abs(turnVal), 3) : -0.5*Math.pow(Math.abs(turnVal), 3);
 
     double left = 0, right = 0;
-    int backupType = 0;
+    int backupType = 1;
    
     // code to switch between regular reversing (like a car; 0) and mirrored reversing (1)
     // case 2 to disable drivetrain (for testing safety purposes)
@@ -408,142 +419,99 @@ public class Robot extends TimedRobot {
         left = 0;
         break;
     }
-
     m_frontLeft.set(left);
     m_rearRight.set(right);
-    
     // end of the lame drivetrain stuff i suppose ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^    
 
     // int ache code - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
-    
     boolean intakeToggle = m_driverController.getLeftBumper();
-    boolean motorOn = m_driverController.getAButton();
-
-    // toggle intake in/out (solenoids)
-   if(intakeToggle == true && intakeToggle_prev == false){
-    intakeIn = !intakeIn;
-   }
-
-   intakeToggle_prev = intakeToggle;
-   s_intake.set(intakeToggle);
-
-    // only let motor spin if intake is out
-    if(/*!intakeIn && */motorOn){
-      m_intake.set(-0.5); // edit for correct rotation direction (linear relationship)
+    if(intakeToggle == true && intakeToggle_prev == false){
+      intakeIn = !intakeIn;
     }
-    else {
-      m_intake.set(0);
-    }
+    intakeToggle_prev = intakeToggle;
     // end int ache code ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
     // belt code - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
-    boolean beltForward = m_copilotContoller.getYButton();
-    boolean beltBack = m_copilotContoller.getBButton();
-    if(beltForward && !beltBack){
-      m_belt.set(.6);
-    }
-    else if(!beltForward && beltBack){
-      m_belt.set(-.6);
-    }
-    else{
-      //m_belt.set(0);
-    }
-   // System.out.println(colorString + ", " + colorBoi.getProximity());
     if (!intakeIn){
+      s_intake.set(true);
+      m_intake.set(-0.65);
       if (ball_detect.getAverageValue() <= 500){
         if(colorBoi.getProximity() > 200){
           if(colorString.equals(teamColor)){
             m_belt.set(-0.6);
-            m_lifter.set(-0.45);
-            kicker.set(true);
+            m_lifter.set(0.45);
+            kicker.set(false);
           }
           else{
             m_belt.set(-0.6);
             m_lifter.set(0);
-            kicker.set(false);
+            kicker.set(true);
           }
         }
         else {
           m_belt.set(-0.6);
         }
       }
-    else{
-      if(colorBoi.getProximity() > 200){
-        if(colorString.equals(teamColor)){
-          m_belt.set(0);
-          m_lifter.set(0);
-          kicker.set(false);
+      else{
+        if(colorBoi.getProximity() > 200){
+          if(colorString.equals(teamColor)){
+            m_belt.set(0);
+            m_lifter.set(0);
+            kicker.set(false);
+          }
+          else{
+            m_belt.set(-0.6); 
+            m_lifter.set(0);
+            kicker.set(true);
+          }
         }
-        else{
-          m_belt.set(-0.6); 
-          m_lifter.set(0);
-          kicker.set(true);
+        else {
+          m_belt.set(-0.6);
+        }
+      }
+      tele_timer.reset();
+    }
+    else {
+      s_intake.set(false);
+      m_intake.set(0);
+      if(tele_timer.get() < 0.1)
+      {
+        m_belt.set(0);
+        m_lifter.set(-0.45);
+      }
+      else if((Math.abs(m_shooterEnc.getVelocity() - shooterTargetSpeed) < 100) && (shooterTargetSpeed > 0))
+      {
+        m_lifter.set(0.45);
+        if(ball_detect.getAverageValue() > 500){
+          m_belt.set(-0.6);
         }
       }
       else {
-        m_belt.set(-0.6);
+        m_belt.set(0);
+        m_lifter.set(0);
       }
     }
-  }
   // end belt code ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
     
 
-    // shoopter code - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-             
-    // to use for testing motor speed (dpad)
-    // POV: 0 up, 90 right, 180 down, 270 left
-/*    double motorSpeed = 0;
-
-    if(m_copilotContoller.getPOV() == 0){
-      motorSpeed += 0.01;
-    }
-    else if(m_copilotContoller.getPOV() == 180){
-      motorSpeed -= 0.01;
-    }
-    if(motorSpeed < -1){
-      motorSpeed = -1;
-    }
-    else if (motorSpeed > 1){
-      motorSpeed = 1;
-    }
-*/
-   
-    
-    /*
-    if(!spinning){
-      if(toggleSpin){
-        m_shooter.set(-0.35);
-        spinning = true;
-      }
-      else{
-        m_shooter.set(0);
-        spinning = false;
-      }
-    }*/
-     // toggle intake in/out (solenoids)
-   boolean toggleSpin = m_copilotContoller.getRightBumper();
-   if(toggleSpin == true && shooterToggle_prev == false){
-    shooterOn = !shooterOn;
-   }
-
-   shooterToggle_prev = toggleSpin;
+    // shoopter code - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -   
+   //boolean toggleSpin = m_copilotContoller.getRightBumper();
+   //if(toggleSpin == true && shooterToggle_prev == false){
+   // shooterOn = !shooterOn;
+   //}
+   //shooterToggle_prev = toggleSpin;
+   shooterOn = m_driverController.getRightBumper();
    if (shooterOn){
-     m_shooterPIDController.setReference(1000, CANSparkMax.ControlType.kVelocity);
-     spinning = true;
+     //1100 - point blank low goal
+     //high goal is 2000, i think
+     shooterTargetSpeed = 1100;
     }
     else{
-      m_shooterPIDController.setReference(0, CANSparkMax.ControlType.kVelocity);
-      spinning = false;
+      shooterTargetSpeed = 0;
     }
 
-    // l i f t    b a l l 
-    boolean shoopt = m_copilotContoller.getLeftBumper();
-  //  if(spinning){
-      if(shoopt){
-        m_lifter.set(.45);
-      }
-   // System.out.println(ball_detect.getAverageValue());
-  //  }   
+    m_shooterPIDController.setReference(shooterTargetSpeed, CANSparkMax.ControlType.kVelocity);
+
     // end shoopter code ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
     // climbler code - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
@@ -551,13 +519,11 @@ public class Robot extends TimedRobot {
     // finger setup: 1 and 2 on one side; when the robot faces right, 1 and 2 start on the right
     // false is open and true is closed
     /*
-
       visual description (robot facing right):
 
      fingy3 -------------------------------------------------------- fingy 2
           |                         |_|                             |
      fingy4 -------------------------------------------------------- fingy 1
-
     */
 
     // set fingers to one side open, rotate right side up to hit bar (so that only fingy1 hits the bar)
@@ -591,7 +557,7 @@ public class Robot extends TimedRobot {
           fingy2.set(true);
           fingy3.set(true);
           fingy4.set(false);   
-          if(climb_timer.get() > 1.0)
+          if(climb_timer.get() > 0.50)
           {
             stage = 3;
             fwdLeftLimitSwitch_l = false;
@@ -614,6 +580,7 @@ public class Robot extends TimedRobot {
             climb_timer.reset();
             stage = 4;
           }
+          break;
         case 4:
           // Give fingy 3 a second to extend
           m_climber.set(-1.0);
@@ -621,7 +588,7 @@ public class Robot extends TimedRobot {
           fingy2.set(true);
           fingy3.set(false);
           fingy4.set(false);
-          if(climb_timer.get() > 1.0)
+          if(climb_timer.get() > 0.50)
           {
             climb_timer.reset();
             stage = 5;
@@ -648,7 +615,7 @@ public class Robot extends TimedRobot {
           fingy2.set(false);
           fingy3.set(false);
           fingy4.set(false);
-          if(climb_timer.get() > 1.0)
+          if(climb_timer.get() > 0.50)
           {
             climb_timer.reset();
             stage = 7;
@@ -661,7 +628,7 @@ public class Robot extends TimedRobot {
           fingy2.set(false);
           fingy3.set(false);
           fingy4.set(true);
-          if(climb_timer.get() > 1.0)
+          if(climb_timer.get() > 0.50)
           {
             climb_timer.reset();
             stage = 8;
@@ -674,7 +641,7 @@ public class Robot extends TimedRobot {
           fingy2.set(false);
           fingy3.set(false);
           fingy4.set(true);       
-          if(climb_timer.get() > 0.25)
+          if(climb_timer.get() > 1.0)
           {
             climb_timer.reset();
             stage = 9;
@@ -687,14 +654,31 @@ public class Robot extends TimedRobot {
           fingy2.set(false);
           fingy3.set(false);
           fingy4.set(true);       
-          if(climb_timer.get() > 0.25)
+          if(climb_timer.get() > 1.0)
           {
-            revLeftLimitSwitch_l = false;
-            revRightLimitSwitch_l = false;
             stage = 10;
           }
           break;
         case 10:
+          // Check to see if more bouncing is needed
+          m_climber.set(0);
+          fingy1.set(true);
+          fingy2.set(false);
+          fingy3.set(false);
+          fingy4.set(true);  
+          if((revLeftLimitSwitch.get() == false) || (revRightLimitSwitch.get() == false))
+          {
+            climb_timer.reset();
+            stage = 8;
+          }
+          else
+          {
+            revLeftLimitSwitch_l = false;
+            revRightLimitSwitch_l = false;
+            stage = 11;
+          }
+          break;
+        case 11:
           // Sweeping around with fingies 1 and 4 open
           m_climber.set(-1.0);
           fingy1.set(true);
@@ -708,22 +692,23 @@ public class Robot extends TimedRobot {
           if(revLeftLimitSwitch_l && revRightLimitSwitch_l)
           {
             climb_timer.reset();
-            stage = 11;
+            stage = 12;
           }
-        case 11:
+          break;
+        case 12:
           // Give fingy 1 a second to extend
           m_climber.set(-1.0);
           fingy1.set(false);
           fingy2.set(false);
           fingy3.set(false);
           fingy4.set(true);
-          if(climb_timer.get() > 1.0)
+          if(climb_timer.get() > 0.50)
           {
             climb_timer.reset();
-            stage = 12;
+            stage = 13;
           }
           break;
-        case 12:
+        case 13:
           // Drift back to the bar
           m_climber.set(0.0);
           fingy1.set(false);
@@ -734,56 +719,73 @@ public class Robot extends TimedRobot {
           if((revLeftLimitSwitch.get() == false) && (revRightLimitSwitch.get() == false))
           {
             climb_timer.reset();
-            stage = 13;
-          }
-          break;
-        case 13:
-        // Close all fingers
-          m_climber.set(0);
-          fingy1.set(false);
-          fingy2.set(false);
-          fingy3.set(false);
-          fingy4.set(false);
-          if(climb_timer.get() > 1.0)
-          {
-            climb_timer.reset();
             stage = 14;
           }
           break;
         case 14:
-          // Release fingers 2 and 3
-          m_climber.set(0);
+        // Close all fingers
+          m_climber.set(0.0);
           fingy1.set(false);
-          fingy2.set(true);
-          fingy3.set(true);
+          fingy2.set(false);
+          fingy3.set(false);
           fingy4.set(false);
-          if(climb_timer.get() > 1.0)
+          if(climb_timer.get() > 0.50)
           {
             climb_timer.reset();
             stage = 15;
           }
           break;
         case 15:
-          // Bounce the robot up to unlock the finger
-          m_climber.set(1);
-          fingy1.set(true);
-          fingy2.set(false);
-          fingy3.set(false);
-          fingy4.set(true);       
-          if(climb_timer.get() > 0.25)
+          // Release fingers 2 and 3
+          m_climber.set(0.0);
+          fingy1.set(false);
+          fingy2.set(true);
+          fingy3.set(true);
+          fingy4.set(false);
+          if(climb_timer.get() > 0.50)
           {
             climb_timer.reset();
             stage = 16;
           }
           break;
         case 16:
+          // Bounce the robot up to unlock the finger
+          m_climber.set(1.0);
+          fingy1.set(false);
+          fingy2.set(true);
+          fingy3.set(true);
+          fingy4.set(false);       
+          if(climb_timer.get() > 1.0)
+          {
+            climb_timer.reset();
+            stage = 17;
+          }
+          break;
+        case 17:
           // Bounce the robot down to unlock the finger
-          m_climber.set(-1);
-          fingy1.set(true);
-          fingy2.set(false);
-          fingy3.set(false);
-          fingy4.set(true);       
-          if(climb_timer.get() > 0.25)
+          m_climber.set(-1.0);
+          fingy1.set(false);
+          fingy2.set(true);
+          fingy3.set(true);
+          fingy4.set(false);       
+          if(climb_timer.get() > 1.0)
+          {
+            stage = 18;
+          }
+          break;
+        case 18:
+          // Check to see if more bouncing is needed
+          m_climber.set(0);
+          fingy1.set(false);
+          fingy2.set(true);
+          fingy3.set(true);
+          fingy4.set(false);  
+          if((fwdLeftLimitSwitch.get() == false) || (fwdRightLimitSwitch.get() == false))
+          {
+            climb_timer.reset();
+            stage = 16;
+          }
+          else
           {
             fwdLeftLimitSwitch_l = false;
             fwdRightLimitSwitch_l = false;
@@ -800,7 +802,6 @@ public class Robot extends TimedRobot {
   } 
 
   /** This function is called once when the robot is disabled. */
-
   @Override
   public void disabledInit() {}
 
@@ -817,41 +818,41 @@ public class Robot extends TimedRobot {
   public void testPeriodic() {
 
     double manual_climber = m_copilotContoller.getLeftY();
-    if(Math.abs(manual_climber) < 0.1){
+    if(Math.abs(manual_climber) < 0.2){
       manual_climber = 0;
     }
     m_climber.set(manual_climber);
   
-  if(m_copilotContoller.getPOV() == 0){
-    fingy1.set(true);
-    fingy2.set(false);
-    fingy3.set(false);
-    fingy4.set(false);
+    if(m_copilotContoller.getPOV() == 0){
+      fingy1.set(true);
+      fingy2.set(false);
+      fingy3.set(false);
+      fingy4.set(false);
+    }
+    else if(m_copilotContoller.getPOV() == 90){
+      fingy1.set(false);
+      fingy2.set(true);
+      fingy3.set(false);
+      fingy4.set(false);
+    }
+    else if(m_copilotContoller.getPOV() == 180){
+      fingy1.set(false);
+      fingy2.set(false);
+      fingy3.set(true);
+      fingy4.set(false);
+    }
+    else if(m_copilotContoller.getPOV() == 270){
+      fingy1.set(false);
+      fingy2.set(false);
+      fingy3.set(false);
+      fingy4.set(true);
+    }
+    else
+    {
+      fingy1.set(false);
+      fingy2.set(false);
+      fingy3.set(false);
+      fingy4.set(false);
+    }
   }
-  else if(m_copilotContoller.getPOV() == 90){
-    fingy1.set(false);
-    fingy2.set(true);
-    fingy3.set(false);
-    fingy4.set(false);
-  }
-  else if(m_copilotContoller.getPOV() == 180){
-    fingy1.set(false);
-    fingy2.set(false);
-    fingy3.set(true);
-    fingy4.set(false);
-  }
-  else if(m_copilotContoller.getPOV() == 270){
-    fingy1.set(false);
-    fingy2.set(false);
-    fingy3.set(false);
-    fingy4.set(true);
-  }
-  else
-  {
-    fingy1.set(false);
-    fingy2.set(false);
-    fingy3.set(false);
-    fingy4.set(false);
-  }
-}
 }
