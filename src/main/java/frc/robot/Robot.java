@@ -164,16 +164,7 @@ public class Robot extends TimedRobot {
 
     CameraServer.startAutomaticCapture();
 
-    NetworkTableInstance NetTableInst = NetworkTableInstance.getDefault();
-    NetworkTable table = NetTableInst.getTable("FMSInfo");
-    isRedAlliance = table.getEntry("isRedAlliance");
-    if(isRedAlliance.getBoolean(true))
-    {
-      teamColor = new String("red");
-    }
-    else{
-      teamColor = new String("blue");
-    }
+    //teamColor = new String("blue");
 
     String[] auto_modes = {"Auto 1", "Auto 2", "Auto 3", "Auto 4", "Auto 5"};
     SmartDashboard.putStringArray("Auto List", auto_modes);
@@ -193,9 +184,8 @@ public class Robot extends TimedRobot {
 
     m_frontLeft.setClosedLoopRampRate(0.05);
     m_rearRight.setClosedLoopRampRate(0.05);
-    m_frontLeft.setOpenLoopRampRate(0.05);
-    m_rearRight.setOpenLoopRampRate(0.05);
-
+    m_frontLeft.setOpenLoopRampRate(0.1);
+    m_rearRight.setOpenLoopRampRate(0.1);
 
     m_leftEnc = m_frontLeft.getEncoder();
     m_leftEnc.setPositionConversionFactor(0.0585);
@@ -269,6 +259,7 @@ public class Robot extends TimedRobot {
     m_odometry.update(m_gyro.getRotation2d(), m_leftEnc.getPosition(), m_rightEnc.getPosition());
     SmartDashboard.putNumber("Gyro", m_gyro.getAngle());
 
+    
   }
 
   @Override
@@ -323,14 +314,22 @@ public class Robot extends TimedRobot {
         }
         break;
       case PICK_UP_BALL:
+        s_intake.set(true);
+        m_intake.set(-0.55);
+        kicker.set(false);
+        m_belt.set(-0.6);
         if(auto_timer.get() > 5)
         {
           autoState = autoStates.GO_BACK;
+          
           auto_timer.reset();
         }
         break;
       case GO_BACK:
         active_trajectory = trajectories.get("goBack");
+        s_intake.set(false);
+        m_intake.set(0);
+        m_belt.set(0);
         if(auto_timer.get() > active_trajectory.getTotalTimeSeconds() + 0.5)
         {
           autoState = autoStates.SHOOT;
@@ -338,6 +337,21 @@ public class Robot extends TimedRobot {
         }
         break;
       case SHOOT:
+
+        if (auto_timer.get() > 0.1){
+          m_lifter.set(-0.45);
+        }
+        else {
+          m_shooterPIDController.setReference(1100, CANSparkMax.ControlType.kVelocity);
+          if ((Math.abs(m_shooterEnc.getVelocity() - shooterTargetSpeed) < 100) && (shooterTargetSpeed > 0)){
+           m_lifter.set(0.45);
+           m_belt.set(-0.6);
+          }
+          else{
+            m_lifter.set(0);
+          }
+        }
+
         if(auto_timer.get() > 5)
         {
           autoState = autoStates.STOP;
@@ -345,6 +359,8 @@ public class Robot extends TimedRobot {
         }
         break;
       case STOP:
+        m_shooterPIDController.setReference(0, CANSparkMax.ControlType.kVelocity);
+        m_belt.set(0);
         break;
       default:
         autoState = autoStates.STOP;
@@ -377,6 +393,17 @@ public class Robot extends TimedRobot {
     tele_timer.start();
     climb_timer.start();
     m_climber_enc.setPosition(0);
+
+    NetworkTableInstance NetTableInst = NetworkTableInstance.getDefault();
+    NetworkTable table = NetTableInst.getTable("FMSInfo");
+    isRedAlliance = table.getEntry("IsRedAlliance");
+    if(isRedAlliance.getBoolean(true))
+    {
+      teamColor = new String("red");
+    }
+    else{
+      teamColor = new String("blue");
+    }
   }
 
   /** This function is called periodically during operator control. */
@@ -389,8 +416,8 @@ public class Robot extends TimedRobot {
     double front_back = reverse < 0.01 ? forward : -reverse;
     double turnVal = -m_driverController.getLeftX();
 
-    front_back = front_back > 0 ? Math.pow(Math.abs(front_back), 3) : -Math.pow(Math.abs(front_back), 3);
-    turnVal = turnVal > 0 ? 0.5*Math.pow(Math.abs(turnVal), 3) : -0.5*Math.pow(Math.abs(turnVal), 3);
+    front_back = front_back > 0 ? Math.pow(Math.abs(front_back), 1) : -Math.pow(Math.abs(front_back), 1);
+    turnVal = turnVal > 0 ? 0.5*Math.pow(Math.abs(turnVal), 1) : -0.5*Math.pow(Math.abs(turnVal), 1);
 
     double left = 0, right = 0;
     int backupType = 1;
@@ -422,7 +449,7 @@ public class Robot extends TimedRobot {
     // end of the lame drivetrain stuff i suppose ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^    
 
     // int ache code - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
-    boolean intakeToggle = m_driverController.getLeftBumper();
+    boolean intakeToggle = m_copilotContoller.getLeftBumper();
     if(intakeToggle == true && intakeToggle_prev == false){
       intakeIn = !intakeIn;
     }
@@ -432,7 +459,7 @@ public class Robot extends TimedRobot {
     // belt code - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
     if (!intakeIn){
       s_intake.set(true);
-      m_intake.set(-0.65);
+      m_intake.set(-0.55);
       if (ball_detect.getAverageValue() <= 500){
         if(colorBoi.getProximity() > 200){
           if(colorString.equals(teamColor)){
@@ -498,11 +525,15 @@ public class Robot extends TimedRobot {
    // shooterOn = !shooterOn;
    //}
    //shooterToggle_prev = toggleSpin;
-   shooterOn = m_driverController.getRightBumper();
+   shooterOn = m_copilotContoller.getRightBumper();
+   boolean highGoal = m_copilotContoller.getXButton();
    if (shooterOn){
      //1100 - point blank low goal
      //high goal is 2000, i think
      shooterTargetSpeed = 1100;
+    }
+    else if(highGoal){
+      shooterTargetSpeed = 2000;
     }
     else{
       shooterTargetSpeed = 0;
@@ -525,19 +556,19 @@ public class Robot extends TimedRobot {
     */
 
     // set fingers to one side open, rotate right side up to hit bar (so that only fingy1 hits the bar)
-    if(m_copilotContoller.getStartButton()){
+    if(m_copilotContoller.getAButton()){
       switch(stage){
         case 0:
             // Rotate climber to vertical (-0.25 revolutions)
-          m_climber.set(0.25);
-          if(m_climber_enc.getPosition() >= 0.25)
+          m_climber.set(1.0);
+          if(m_climber_enc.getPosition() >= 0.20)
           {
             stage = 1;
           }
           break;
         case 1:
           // Climber is in position, open fingy 1, 2, and 3
-          m_climber.set(0);
+          m_climber.set(m_copilotContoller.getLeftY());
           fingy1.set(true);
           fingy2.set(true);
           fingy3.set(true);
