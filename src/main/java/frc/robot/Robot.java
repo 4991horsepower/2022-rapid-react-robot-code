@@ -128,13 +128,14 @@ public class Robot extends TimedRobot {
   // Autonomous Mode
   private Gyro m_gyro = new ADXRS450_Gyro();
   private HashMap<String, Trajectory> trajectories = new HashMap<String, Trajectory>();
-  private enum autoStates {GET_BALL, PICK_UP_BALL, GO_BACK, SHOOT, STOP};
+  private enum autoStates {GET_BALL, AUTO_3_GO, GO_BACK, SHOOT, STOP};
   private autoStates autoState;
+  private String m_autoSelected;
 
   // timers
   private Timer auto_timer = new Timer();
   private Timer climb_timer = new Timer();
-  private Timer ball_timer = new Timer();
+  private Timer tele_timer = new Timer();
 
   //analog
   private AnalogInput ball_detect = new AnalogInput(0);
@@ -158,6 +159,8 @@ public class Robot extends TimedRobot {
 
     CameraServer.startAutomaticCapture();
 
+    //teamColor = new String("blue");
+
     String[] auto_modes = {"Auto 1", "Auto 2", "Auto 3", "Auto 4", "Auto 5"};
     SmartDashboard.putStringArray("Auto List", auto_modes);
     
@@ -176,8 +179,8 @@ public class Robot extends TimedRobot {
 
     m_frontLeft.setClosedLoopRampRate(0.05);
     m_rearRight.setClosedLoopRampRate(0.05);
-    m_frontLeft.setOpenLoopRampRate(0.1);
-    m_rearRight.setOpenLoopRampRate(0.1);
+    m_frontLeft.setOpenLoopRampRate(0.2);
+    m_rearRight.setOpenLoopRampRate(0.2);
 
     m_leftEnc = m_frontLeft.getEncoder();
     m_leftEnc.setPositionConversionFactor(0.0585);
@@ -225,7 +228,6 @@ public class Robot extends TimedRobot {
 
     intakeIn = true;
     shooterTargetSpeed = 0;
-    ball_timer.start();
   }
 
   /**
@@ -249,12 +251,12 @@ public class Robot extends TimedRobot {
       colorString = "unknown";
     }
     m_odometry.update(m_gyro.getRotation2d(), m_leftEnc.getPosition(), m_rightEnc.getPosition());
-    SmartDashboard.putNumber("Gyro", m_gyro.getAngle());
+    SmartDashboard.putNumber("Gyro", m_gyro.getAngle());    
   }
 
   @Override
   public void autonomousInit() {
-    String m_autoSelected = SmartDashboard.getString("Auto Selector", "Auto 1");
+    m_autoSelected = SmartDashboard.getString("Auto Selector", "Auto 1");
     System.out.println("Auto selected: " + m_autoSelected);
     String path = Filesystem.getDeployDirectory().toPath().resolve("paths/output").toString();
     File trajectory_dir = new File(path);
@@ -280,15 +282,24 @@ public class Robot extends TimedRobot {
       autoState = autoStates.GET_BALL;
       m_odometry.resetPosition(trajectories.get("getBall").getInitialPose(), m_gyro.getRotation2d());
     }
+    else if (m_autoSelected.equals("Auto 2")){
+      autoState = autoStates.SHOOT;
+      m_odometry.resetPosition(trajectories.get("getBall2").getInitialPose(), m_gyro.getRotation2d());
+    }
+    else if(m_autoSelected.equals("Auto 3")){
+      autoState = autoStates.AUTO_3_GO;
+      m_odometry.resetPosition(trajectories.get("go3").getInitialPose(), m_gyro.getRotation2d());
+    }
+    else if(m_autoSelected.equals("Auto 4")){
+      autoState = autoStates.GET_BALL;
+      m_odometry.resetPosition(trajectories.get("getBall4").getInitialPose(), m_gyro.getRotation2d());
+    }
     else {
       autoState = autoStates.STOP;
       m_odometry.resetPosition(new Pose2d(), m_gyro.getRotation2d());
     }
     auto_timer.reset();
     auto_timer.start();
-
-    intakeIn = true;
-    shooterTargetSpeed = 0;
   }
 
   /** This function is called periodically during autonomous. */
@@ -299,28 +310,38 @@ public class Robot extends TimedRobot {
 
     switch(autoState) {
       case GET_BALL:
-        active_trajectory = trajectories.get("getBall");
-        if(auto_timer.get() > active_trajectory.getTotalTimeSeconds() + 0.5)
         intakeIn = false;
         shooterTargetSpeed = 0;
-        {
-          autoState = autoStates.PICK_UP_BALL;
-          auto_timer.reset();
+        if(m_autoSelected.equals("Auto 1")){
+          active_trajectory = trajectories.get("getBall");
         }
-        break;
-      case PICK_UP_BALL:
-        intakeIn = false;
-        shooterTargetSpeed = 0;
-        if(auto_timer.get() > 5)
+        else if(m_autoSelected.equals("Auto 4")){
+          active_trajectory = trajectories.get("getBall4");
+        }
+        if(auto_timer.get() > active_trajectory.getTotalTimeSeconds() + 0.5)
         {
           autoState = autoStates.GO_BACK;
           auto_timer.reset();
         }
         break;
-      case GO_BACK:
+      case AUTO_3_GO:
+        active_trajectory = trajectories.get("go3");
         intakeIn = true;
         shooterTargetSpeed = 0;
+        if(auto_timer.get() > active_trajectory.getTotalTimeSeconds() + 0.5){
+          autoState = autoStates.SHOOT;
+          auto_timer.reset();
+        }
+        break;
+      case GO_BACK:
+      if(m_autoSelected.equals("Auto 1")){
         active_trajectory = trajectories.get("goBack");
+      }
+      else if(m_autoSelected.equals("Auto 4")){
+        active_trajectory = trajectories.get("goBack4");
+      }
+        intakeIn = true;
+        shooterTargetSpeed = 0;
         if(auto_timer.get() > active_trajectory.getTotalTimeSeconds() + 0.5)
         {
           autoState = autoStates.SHOOT;
@@ -358,8 +379,6 @@ public class Robot extends TimedRobot {
       m_leftPIDController.setReference(0.0, CANSparkMax.ControlType.kVelocity);
       m_rightPIDController.setReference(0.0, CANSparkMax.ControlType.kVelocity);
     }
-
-    runBallHandler();
   }
 
   private void runBallHandler()
@@ -367,7 +386,7 @@ public class Robot extends TimedRobot {
     // belt code - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
     if (!intakeIn){
       s_intake.set(true);
-      m_intake.set(-0.65);
+      m_intake.set(-0.55);
       if (ball_detect.getAverageValue() <= 500){
         if(colorBoi.getProximity() > 200){
           if(colorString.equals(teamColor)){
@@ -402,12 +421,12 @@ public class Robot extends TimedRobot {
           m_belt.set(-0.6);
         }
       }
-      ball_timer.reset();
+      tele_timer.reset();
     }
     else {
       s_intake.set(false);
       m_intake.set(0);
-      if(ball_timer.get() < 0.1)
+      if(tele_timer.get() < 0.1)
       {
         m_belt.set(0);
         m_lifter.set(-0.45);
@@ -431,6 +450,13 @@ public class Robot extends TimedRobot {
   /** This function is called once when teleop is enabled. */
   @Override
   public void teleopInit() {
+    stage = 0;
+    intakeIn = true;
+    shooterTargetSpeed = 0;
+
+    tele_timer.start();
+    climb_timer.start();
+    m_climber_enc.setPosition(0);
 
     NetworkTableInstance NetTableInst = NetworkTableInstance.getDefault();
     NetworkTable table = NetTableInst.getTable("FMSInfo");
@@ -442,13 +468,6 @@ public class Robot extends TimedRobot {
     else{
       teamColor = new String("blue");
     }
-    
-    stage = 0;
-    intakeIn = true;
-    shooterTargetSpeed = 0;
-
-    climb_timer.start();
-    m_climber_enc.setPosition(0);
   }
 
   /** This function is called periodically during operator control. */
@@ -461,11 +480,16 @@ public class Robot extends TimedRobot {
     double front_back = reverse < 0.01 ? forward : -reverse;
     double turnVal = -m_driverController.getLeftX();
 
-    front_back = front_back > 0 ? Math.pow(Math.abs(front_back), 3) : -Math.pow(Math.abs(front_back), 3);
-    turnVal = turnVal > 0 ? 0.5*Math.pow(Math.abs(turnVal), 3) : -0.5*Math.pow(Math.abs(turnVal), 3);
+    if (Math.abs(turnVal) < .2){
+      turnVal = 0;
+    }
+
+    front_back = front_back > 0 ? Math.pow(Math.abs(front_back), 1) : -Math.pow(Math.abs(front_back), 1);
+    turnVal = turnVal > 0 ? 0.5*Math.pow(Math.abs(turnVal), 1) : -0.5*Math.pow(Math.abs(turnVal), 1);
 
     double left = 0, right = 0;
     int backupType = 1;
+
    
     // code to switch between regular reversing (like a car; 0) and mirrored reversing (1)
     // case 2 to disable drivetrain (for testing safety purposes)
@@ -494,19 +518,25 @@ public class Robot extends TimedRobot {
     // end of the lame drivetrain stuff i suppose ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^    
 
     // int ache code - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
-    boolean intakeToggle = m_driverController.getLeftBumper();
+    boolean intakeToggle = m_copilotContoller.getLeftBumper();
     if(intakeToggle == true && intakeToggle_prev == false){
       intakeIn = !intakeIn;
     }
-
     intakeToggle_prev = intakeToggle;
     // end int ache code ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+    runBallHandler();
+
     // shoopter code - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -   
-   if (m_driverController.getRightBumper()){
+   boolean lowGoal = m_copilotContoller.getRightBumper();
+   boolean highGoal = m_copilotContoller.getXButton();
+   if (lowGoal){
      //1100 - point blank low goal
      //high goal is 2000, i think
      shooterTargetSpeed = 1100;
+    }
+    else if(highGoal){
+      shooterTargetSpeed = 2000;
     }
     else{
       shooterTargetSpeed = 0;
@@ -526,19 +556,19 @@ public class Robot extends TimedRobot {
     */
 
     // set fingers to one side open, rotate right side up to hit bar (so that only fingy1 hits the bar)
-    if(m_copilotContoller.getStartButton()){
+    if(m_copilotContoller.getAButton()){
       switch(stage){
         case 0:
             // Rotate climber to vertical (-0.25 revolutions)
-          m_climber.set(0.25);
-          if(m_climber_enc.getPosition() >= 0.25)
+          m_climber.set(1.0);
+          if(m_climber_enc.getPosition() >= 0.20)
           {
             stage = 1;
           }
           break;
         case 1:
           // Climber is in position, open fingy 1, 2, and 3
-          m_climber.set(0);
+          m_climber.set(m_copilotContoller.getLeftY());
           fingy1.set(true);
           fingy2.set(true);
           fingy3.set(true);
