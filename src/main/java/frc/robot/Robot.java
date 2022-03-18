@@ -161,7 +161,7 @@ public class Robot extends TimedRobot {
 
     //teamColor = new String("blue");
 
-    String[] auto_modes = {"Auto 1", "Auto 2", "Auto 3", "Auto 4", "Auto 5"};
+    String[] auto_modes = {"None", "Auto 1", "Auto 2", "Auto 3", "Auto 4", "Auto 5"};
     SmartDashboard.putStringArray("Auto List", auto_modes);
     
     m_frontLeft.restoreFactoryDefaults();
@@ -256,7 +256,7 @@ public class Robot extends TimedRobot {
 
   @Override
   public void autonomousInit() {
-    m_autoSelected = SmartDashboard.getString("Auto Selector", "Auto 1");
+    m_autoSelected = SmartDashboard.getString("Auto Selector", "None");
     System.out.println("Auto selected: " + m_autoSelected);
     String path = Filesystem.getDeployDirectory().toPath().resolve("paths/output").toString();
     File trajectory_dir = new File(path);
@@ -310,17 +310,17 @@ public class Robot extends TimedRobot {
 
     switch(autoState) {
       case GET_BALL:
-      if(m_autoSelected.equals("Auto 1")){
-        active_trajectory = trajectories.get("getBall");
-      }
-      else if(m_autoSelected.equals("Auto 4")){
-        active_trajectory = trajectories.get("getBall4");
-        kicker.set(false);
-        s_intake.set(true);
-        m_intake.set(-0.55);
-        m_belt.set(-0.6);
-      }
-        
+        if(m_autoSelected.equals("Auto 1")){
+          active_trajectory = trajectories.get("getBall");
+        }
+        else if(m_autoSelected.equals("Auto 4")){
+          active_trajectory = trajectories.get("getBall4");
+          kicker.set(false);
+          s_intake.set(true);
+          m_intake.set(-0.55);
+          m_belt.set(-0.6);
+        }
+          
         if(auto_timer.get() > active_trajectory.getTotalTimeSeconds() + 0.5)
         {
           autoState = autoStates.PICK_UP_BALL;
