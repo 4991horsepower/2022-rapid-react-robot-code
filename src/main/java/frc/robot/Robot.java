@@ -192,13 +192,13 @@ public class Robot extends TimedRobot {
 
     m_leftPIDController = m_frontLeft.getPIDController();
     m_leftPIDController.setFF(0.00018);
-    m_leftPIDController.setP(0.00025);
+    m_leftPIDController.setP(0.0003);
     m_leftPIDController.setI(0.0);
     m_leftPIDController.setD(0.0);
 
     m_rightPIDController = m_rearRight.getPIDController();
     m_rightPIDController.setFF(0.00018);
-    m_rightPIDController.setP(0.00025);
+    m_rightPIDController.setP(0.0003);
     m_rightPIDController.setI(0.0);
     m_rightPIDController.setD(0.0);
 
@@ -315,6 +315,10 @@ public class Robot extends TimedRobot {
       }
       else if(m_autoSelected.equals("Auto 4")){
         active_trajectory = trajectories.get("getBall4");
+        kicker.set(false);
+        s_intake.set(true);
+        m_intake.set(-0.55);
+        m_belt.set(-0.6);
       }
         
         if(auto_timer.get() > active_trajectory.getTotalTimeSeconds() + 0.5)
