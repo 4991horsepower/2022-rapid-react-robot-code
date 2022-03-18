@@ -130,6 +130,7 @@ public class Robot extends TimedRobot {
   private HashMap<String, Trajectory> trajectories = new HashMap<String, Trajectory>();
   private enum autoStates {GET_BALL, AUTO_3_GO, PICK_UP_BALL, GO_BACK, SHOOT, STOP};
   private autoStates autoState;
+  private String m_autoSelected;
 
   // timers
   private Timer auto_timer = new Timer();
@@ -264,7 +265,7 @@ public class Robot extends TimedRobot {
 
   @Override
   public void autonomousInit() {
-    String m_autoSelected = SmartDashboard.getString("Auto Selector", "Auto 1");
+    m_autoSelected = SmartDashboard.getString("Auto Selector", "Auto 1");
     System.out.println("Auto selected: " + m_autoSelected);
     String path = Filesystem.getDeployDirectory().toPath().resolve("paths/output").toString();
     File trajectory_dir = new File(path);
@@ -298,6 +299,10 @@ public class Robot extends TimedRobot {
       autoState = autoStates.AUTO_3_GO;
       m_odometry.resetPosition(trajectories.get("go3").getInitialPose(), m_gyro.getRotation2d());
     }
+    else if(m_autoSelected.equals("Auto 4")){
+      autoState = autoStates.GET_BALL;
+      m_odometry.resetPosition(trajectories.get("getBall4").getInitialPose(), m_gyro.getRotation2d());
+    }
     else {
       autoState = autoStates.STOP;
       m_odometry.resetPosition(new Pose2d(), m_gyro.getRotation2d());
@@ -314,7 +319,13 @@ public class Robot extends TimedRobot {
 
     switch(autoState) {
       case GET_BALL:
+      if(m_autoSelected.equals("Auto 1")){
         active_trajectory = trajectories.get("getBall");
+      }
+      else if(m_autoSelected.equals("Auto 4")){
+        active_trajectory = trajectories.get("getBall4");
+      }
+        
         if(auto_timer.get() > active_trajectory.getTotalTimeSeconds() + 0.5)
         {
           autoState = autoStates.PICK_UP_BALL;
@@ -346,7 +357,13 @@ public class Robot extends TimedRobot {
         break;
         
       case GO_BACK:
+      if(m_autoSelected.equals("Auto 1")){
         active_trajectory = trajectories.get("goBack");
+      }
+      else if(m_autoSelected.equals("Auto 4")){
+        active_trajectory = trajectories.get("goBack4");
+      }
+        
         s_intake.set(false);
         m_intake.set(0);
         m_belt.set(0);
