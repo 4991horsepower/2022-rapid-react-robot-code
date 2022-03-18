@@ -432,11 +432,16 @@ public class Robot extends TimedRobot {
     double front_back = reverse < 0.01 ? forward : -reverse;
     double turnVal = -m_driverController.getLeftX();
 
+    if (Math.abs(turnVal) < .2){
+      turnVal = 0;
+    }
+
     front_back = front_back > 0 ? Math.pow(Math.abs(front_back), 1) : -Math.pow(Math.abs(front_back), 1);
     turnVal = turnVal > 0 ? 0.5*Math.pow(Math.abs(turnVal), 1) : -0.5*Math.pow(Math.abs(turnVal), 1);
 
     double left = 0, right = 0;
     int backupType = 1;
+
    
     // code to switch between regular reversing (like a car; 0) and mirrored reversing (1)
     // case 2 to disable drivetrain (for testing safety purposes)
