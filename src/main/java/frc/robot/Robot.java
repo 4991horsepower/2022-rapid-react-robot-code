@@ -185,8 +185,8 @@ public class Robot extends TimedRobot {
 
     m_frontLeft.setClosedLoopRampRate(0.05);
     m_rearRight.setClosedLoopRampRate(0.05);
-    m_frontLeft.setOpenLoopRampRate(0.1);
-    m_rearRight.setOpenLoopRampRate(0.1);
+    m_frontLeft.setOpenLoopRampRate(0.2);
+    m_rearRight.setOpenLoopRampRate(0.2);
 
     m_leftEnc = m_frontLeft.getEncoder();
     m_leftEnc.setPositionConversionFactor(0.0585);
@@ -258,9 +258,7 @@ public class Robot extends TimedRobot {
       colorString = "unknown";
     }
     m_odometry.update(m_gyro.getRotation2d(), m_leftEnc.getPosition(), m_rightEnc.getPosition());
-    SmartDashboard.putNumber("Gyro", m_gyro.getAngle());
-
-    
+    SmartDashboard.putNumber("Gyro", m_gyro.getAngle());    
   }
 
   @Override
