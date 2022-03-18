@@ -128,7 +128,7 @@ public class Robot extends TimedRobot {
   // Autonomous Mode
   private Gyro m_gyro = new ADXRS450_Gyro();
   private HashMap<String, Trajectory> trajectories = new HashMap<String, Trajectory>();
-  private enum autoStates {GET_BALL, PICK_UP_BALL, GO_BACK, SHOOT, STOP};
+  private enum autoStates {GET_BALL, AUTO_3_GO, PICK_UP_BALL, GO_BACK, SHOOT, STOP};
   private autoStates autoState;
 
   // timers
@@ -290,6 +290,14 @@ public class Robot extends TimedRobot {
       autoState = autoStates.GET_BALL;
       m_odometry.resetPosition(trajectories.get("getBall").getInitialPose(), m_gyro.getRotation2d());
     }
+    else if (m_autoSelected.equals("Auto 2")){
+      autoState = autoStates.SHOOT;
+      m_odometry.resetPosition(trajectories.get("getBall2").getInitialPose(), m_gyro.getRotation2d());
+    }
+    else if(m_autoSelected.equals("Auto 3")){
+      autoState = autoStates.AUTO_3_GO;
+      m_odometry.resetPosition(trajectories.get("go3").getInitialPose(), m_gyro.getRotation2d());
+    }
     else {
       autoState = autoStates.STOP;
       m_odometry.resetPosition(new Pose2d(), m_gyro.getRotation2d());
@@ -325,6 +333,18 @@ public class Robot extends TimedRobot {
           auto_timer.reset();
         }
         break;
+      case AUTO_3_GO:
+        active_trajectory = trajectories.get("go3");
+        s_intake.set(false);
+        m_intake.set(0);
+        kicker.set(false);
+        m_belt.set(0);
+        if(auto_timer.get() > active_trajectory.getTotalTimeSeconds() + 0.5){
+          autoState = autoStates.SHOOT;
+          auto_timer.reset();
+        }
+        break;
+        
       case GO_BACK:
         active_trajectory = trajectories.get("goBack");
         s_intake.set(false);
@@ -338,18 +358,13 @@ public class Robot extends TimedRobot {
         break;
       case SHOOT:
 
-        if (auto_timer.get() > 0.1){
-          m_lifter.set(-0.45);
+        m_shooterPIDController.setReference(1100, CANSparkMax.ControlType.kVelocity);
+        if (Math.abs(m_shooterEnc.getVelocity() - 1100) < 100){
+          m_lifter.set(0.45);
+          m_belt.set(-0.6);
         }
-        else {
-          m_shooterPIDController.setReference(1100, CANSparkMax.ControlType.kVelocity);
-          if ((Math.abs(m_shooterEnc.getVelocity() - shooterTargetSpeed) < 100) && (shooterTargetSpeed > 0)){
-           m_lifter.set(0.45);
-           m_belt.set(-0.6);
-          }
-          else{
-            m_lifter.set(0);
-          }
+        else{
+          m_lifter.set(0);
         }
 
         if(auto_timer.get() > 5)
@@ -361,6 +376,7 @@ public class Robot extends TimedRobot {
       case STOP:
         m_shooterPIDController.setReference(0, CANSparkMax.ControlType.kVelocity);
         m_belt.set(0);
+        m_lifter.set(0);
         break;
       default:
         autoState = autoStates.STOP;
