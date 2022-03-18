@@ -146,15 +146,9 @@ public class Robot extends TimedRobot {
   // Button States
   private boolean intakeIn;
   private boolean intakeToggle_prev;
-  private boolean shooterToggle_prev;
-  private boolean shooterOn;
 
   private DifferentialDriveOdometry m_odometry  = new DifferentialDriveOdometry(new Rotation2d(), new Pose2d());
   private DifferentialDriveKinematics kinematics = new DifferentialDriveKinematics(0.555625);
-
-  private Double cam_tx;
-  private Double cam_ty;
-  private Double cam_tv;
 
   /**
    * This function is run when the robot is first started up and should be used for any
@@ -233,7 +227,6 @@ public class Robot extends TimedRobot {
     m_climber_enc.setPositionConversionFactor(1.0/400.0);
 
     intakeIn = true;
-    shooterOn = false;
     shooterTargetSpeed = 0;
   }
 
@@ -418,7 +411,6 @@ public class Robot extends TimedRobot {
   public void teleopInit() {
     stage = 0;
     intakeIn = true;
-    shooterOn = false;
     shooterTargetSpeed = 0;
 
     tele_timer.start();
@@ -556,14 +548,9 @@ public class Robot extends TimedRobot {
     
 
     // shoopter code - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -   
-   //boolean toggleSpin = m_copilotContoller.getRightBumper();
-   //if(toggleSpin == true && shooterToggle_prev == false){
-   // shooterOn = !shooterOn;
-   //}
-   //shooterToggle_prev = toggleSpin;
-   shooterOn = m_copilotContoller.getRightBumper();
+   boolean lowGoal = m_copilotContoller.getRightBumper();
    boolean highGoal = m_copilotContoller.getXButton();
-   if (shooterOn){
+   if (lowGoal){
      //1100 - point blank low goal
      //high goal is 2000, i think
      shooterTargetSpeed = 1100;
