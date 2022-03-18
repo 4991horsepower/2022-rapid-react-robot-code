@@ -5,5 +5,5 @@
   "maxAcceleration": 10.0,
   "trackWidth": 0.555625,
   "gameName": "Rapid React",
-  "outputDir": "../../../Documents/GitHub/2022-rapid-react-robot-code/src/main/deploy/paths"
+  "outputDir": "../../src/main/deploy/paths"
 }
