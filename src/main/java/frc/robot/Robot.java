@@ -329,10 +329,6 @@ public class Robot extends TimedRobot {
           active_trajectory = trajectories.get("getBall4");
           intakeIn = false;
           shooterTargetSpeed = 0;
-          //kicker.set(false);
-          //s_intake.set(true);
-          //m_intake.set(-0.55);
-          //m_belt.set(-0.6);
         }
           
         if(auto_timer.get() > active_trajectory.getTotalTimeSeconds() + 0.5)
@@ -344,10 +340,6 @@ public class Robot extends TimedRobot {
       case PICK_UP_BALL:
         intakeIn = false;
         shooterTargetSpeed = 0;
-        //s_intake.set(true);
-        //m_intake.set(-0.55);
-        //kicker.set(false);
-        //m_belt.set(-0.6);
         if(auto_timer.get() > 5)
         {
           autoState = autoStates.GO_BACK;
@@ -359,10 +351,6 @@ public class Robot extends TimedRobot {
         active_trajectory = trajectories.get("go3");
         intakeIn = true;
         shooterTargetSpeed = 0;
-        //s_intake.set(false);
-        //m_intake.set(0);
-        //kicker.set(false);
-        //m_belt.set(0);
         if(auto_timer.get() > active_trajectory.getTotalTimeSeconds() + 0.5){
           autoState = autoStates.SHOOT;
           auto_timer.reset();
@@ -378,9 +366,6 @@ public class Robot extends TimedRobot {
       }
         intakeIn = true;
         shooterTargetSpeed = 0;
-        //s_intake.set(false);
-        //m_intake.set(0);
-        //m_belt.set(0);
         if(auto_timer.get() > active_trajectory.getTotalTimeSeconds() + 0.5)
         {
           autoState = autoStates.SHOOT;
@@ -388,29 +373,15 @@ public class Robot extends TimedRobot {
         }
         break;
       case REVERSE:
-      active_trajectory = trajectories.get("shootAndGo");
-      intakeIn = true;
-      shooterTargetSpeed = 0;
-      //s_intake.set(false);
-      //m_intake.set(0);
-      //kicker.set(false);
-      //m_belt.set(0);
-      if(auto_timer.get() > active_trajectory.getTotalTimeSeconds() + 0.5){
-        autoState = autoStates.STOP;
-        auto_timer.reset();
-      }
-      break;
+        active_trajectory = trajectories.get("shootAndGo");
+        intakeIn = true;
+        shooterTargetSpeed = 0;
+        if(auto_timer.get() > active_trajectory.getTotalTimeSeconds() + 0.5){
+          autoState = autoStates.STOP;
+          auto_timer.reset();
+        }
+        break;
       case SHOOT:
-        /*
-        m_shooterPIDController.setReference(1100, CANSparkMax.ControlType.kVelocity);
-        if (Math.abs(m_shooterEnc.getVelocity() - 1100) < 100){
-          m_lifter.set(0.75);
-          m_belt.set(-0.6);
-        }
-        else{
-          m_lifter.set(0);
-        }
-        */
         intakeIn = true;
         shooterTargetSpeed = 1100;
         if(auto_timer.get() > 5)
@@ -429,9 +400,6 @@ public class Robot extends TimedRobot {
       case STOP:
         intakeIn = true;
         shooterTargetSpeed = 0;
-        //m_shooterPIDController.setReference(0, CANSparkMax.ControlType.kVelocity);
-        //m_belt.set(0);
-        //m_lifter.set(0);
         break;
       default:
         autoState = autoStates.STOP;
