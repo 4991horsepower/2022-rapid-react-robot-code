@@ -10,6 +10,8 @@ import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.StringTokenizer;
 
+import javax.lang.model.util.ElementScanner6;
+
 import com.revrobotics.CANSparkMax;
 import com.revrobotics.CANSparkMaxLowLevel.MotorType;
 import com.revrobotics.ColorMatch;
@@ -43,6 +45,7 @@ import edu.wpi.first.wpilibj.Solenoid;
 import edu.wpi.first.wpilibj.TimedRobot;
 import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj.XboxController;
+import edu.wpi.first.wpilibj.Joystick;
 import edu.wpi.first.wpilibj.interfaces.Gyro;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj.util.Color;
@@ -59,7 +62,8 @@ public class Robot extends TimedRobot {
 
   private XboxController m_driverController = new XboxController(0);
   private XboxController m_copilotContoller = new XboxController(1);
-  
+  private Joystick m_joiboi = new Joystick(0);
+
   private CANSparkMax m_frontLeft = new CANSparkMax(1, MotorType.kBrushless);
   private CANSparkMax m_frontRight = new CANSparkMax(3, MotorType.kBrushless);  
   private CANSparkMax m_rearLeft = new CANSparkMax(2, MotorType.kBrushless);
@@ -210,7 +214,7 @@ public class Robot extends TimedRobot {
     m_shooter.setInverted(true);
     m_shooter.setClosedLoopRampRate(0.1);
     m_shooterEnc = m_shooter.getEncoder();
-    m_shooterPIDController = m_shooter.getPIDController();
+     m_shooterPIDController = m_shooter.getPIDController();
     m_shooterPIDController.setFF(0.00025);
     m_shooterPIDController.setP(0.0008);
     m_shooterPIDController.setI(0.0);
@@ -420,7 +424,7 @@ public class Robot extends TimedRobot {
       m_rightPIDController.setReference(0.0, CANSparkMax.ControlType.kVelocity);
     }
 
-    runBallHandler();
+    runBallHandler(true);
   }
 
   /** This function is called once when teleop is enabled. */
@@ -452,12 +456,12 @@ public class Robot extends TimedRobot {
     teamColor = new String("red");
   }
 
-  private void runBallHandler()
+  private void runBallHandler(boolean active)
   {
     // belt code - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
-    if (!intakeIn){
-      s_intake.set(true);
-      m_intake.set(-0.6);
+    if (/*!intakeIn*/active){
+      //s_intake.set(true);
+     // m_intake.set(-0.6);
       if (ball_detect.getAverageValue() <= 500){
         if(colorBoi.getProximity() > 200){
           if(colorString.equals(teamColor)){
@@ -495,7 +499,7 @@ public class Robot extends TimedRobot {
       ball_timer.reset();
     }
     else {
-      s_intake.set(false);
+      //s_intake.set(false);
       m_intake.set(0);
       if(ball_timer.get() < 0.1)
       {
@@ -561,8 +565,8 @@ public class Robot extends TimedRobot {
         left = 0;
         break;
     }
-    m_frontLeft.set(left);
-    m_rearRight.set(right);
+    m_frontLeft.set(left*0.25);
+    m_rearRight.set(right*0.25);
     // end of the lame drivetrain stuff i suppose ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^    
 
     // int ache code - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
@@ -573,7 +577,7 @@ public class Robot extends TimedRobot {
     intakeToggle_prev = intakeToggle;
     // end int ache code ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-    runBallHandler();
+    runBallHandler(true);
 
     // shoopter code - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -   
    boolean lowGoal = m_copilotContoller.getRightBumper();
@@ -890,37 +894,51 @@ public class Robot extends TimedRobot {
 
   /** This function is called once when test mode is enabled. */
   @Override
-  public void testInit() {}
+  public void testInit() {
+    updateTeamColor();
+  }
 
   /** This function is called periodically during test mode. */
   @Override
   public void testPeriodic() {
-
-    double manual_climber = m_copilotContoller.getLeftY();
-    if(Math.abs(manual_climber) < 0.2){
+    
+    double manual_climber = m_driverController.getLeftY();
+    if(Math.abs(manual_climber) < 0.25){
       manual_climber = 0;
     }
-    m_climber.set(manual_climber);
-  
-    if(m_copilotContoller.getPOV() == 0){
+
+    if(manual_climber > 0 && m_climber_enc.getPosition() < 0.5)
+    {
+      m_climber.set(manual_climber);
+    }
+    else if(manual_climber < 0 && m_climber_enc.getPosition() > -0.5)
+    {
+      m_climber.set(manual_climber);
+    }
+    else
+    {
+      m_climber.set(0);
+    }  
+
+    if(m_driverController.getAButton()){
       fingy1.set(true);
       fingy2.set(false);
       fingy3.set(false);
       fingy4.set(false);
     }
-    else if(m_copilotContoller.getPOV() == 90){
+    else if(m_driverController.getBButton()){
       fingy1.set(false);
       fingy2.set(true);
       fingy3.set(false);
       fingy4.set(false);
     }
-    else if(m_copilotContoller.getPOV() == 180){
+    else if(m_driverController.getXButton()){
       fingy1.set(false);
       fingy2.set(false);
       fingy3.set(true);
       fingy4.set(false);
     }
-    else if(m_copilotContoller.getPOV() == 270){
+    else if(m_driverController.getYButton()){
       fingy1.set(false);
       fingy2.set(false);
       fingy3.set(false);
@@ -933,5 +951,22 @@ public class Robot extends TimedRobot {
       fingy3.set(false);
       fingy4.set(false);
     }
+    boolean intakeToggle = m_driverController.getLeftBumper();
+    boolean beltToggle = m_driverController.getRightBumper();
+
+    if(intakeToggle == true && intakeToggle_prev == false){
+      intakeIn = !intakeIn;
+     }
+     intakeToggle_prev = intakeToggle;
+     s_intake.set(intakeIn);
+
+     if (beltToggle){
+       runBallHandler(true);
+     }
+     else{
+       runBallHandler(false);
+     }
+     
+      
   }
 }
