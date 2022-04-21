@@ -100,8 +100,8 @@ public class Robot extends TimedRobot {
   private int stage = 0; // needs to be defined in a scope outside teleop
 
   // sensor!!!!
-  private DigitalInput revLeftLimitSwitch = new DigitalInput(0);
-  private DigitalInput fwdLeftLimitSwitch = new DigitalInput(1);
+  private DigitalInput revLeftLimitSwitch = new DigitalInput(1);
+  private DigitalInput fwdLeftLimitSwitch = new DigitalInput(0 );
   private DigitalInput revRightLimitSwitch = new DigitalInput(2);
   private DigitalInput fwdRightLimitSwitch = new DigitalInput(3);
 
@@ -217,7 +217,7 @@ public class Robot extends TimedRobot {
      m_shooterPIDController = m_shooter.getPIDController();
     m_shooterPIDController.setFF(0.00025);
     m_shooterPIDController.setP(0.0008);
-    m_shooterPIDController.setI(0.0);
+    m_shooterPIDController.setI(0.000001);
     m_shooterPIDController.setD(0.0);
     
     //colorator
@@ -443,7 +443,7 @@ public class Robot extends TimedRobot {
 
   private void updateTeamColor()
   {
-    /*NetworkTableInstance NetTableInst = NetworkTableInstance.getDefault();
+    NetworkTableInstance NetTableInst = NetworkTableInstance.getDefault();
     NetworkTable table = NetTableInst.getTable("FMSInfo");
     isRedAlliance = table.getEntry("IsRedAlliance");
     if(isRedAlliance.getBoolean(true))
@@ -452,16 +452,16 @@ public class Robot extends TimedRobot {
     }
     else{
       teamColor = new String("blue");
-    }*/
-    teamColor = new String("red");
+    }
+   // teamColor = new String("blue");
   }
 
   private void runBallHandler(boolean active)
   {
     // belt code - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
-    if (/*!intakeIn*/active){
-      //s_intake.set(true);
-     // m_intake.set(-0.6);
+    if (!intakeIn && active){
+      s_intake.set(true);
+      m_intake.set(-0.75);
       if (ball_detect.getAverageValue() <= 500){
         if(colorBoi.getProximity() > 200){
           if(colorString.equals(teamColor)){
@@ -499,14 +499,14 @@ public class Robot extends TimedRobot {
       ball_timer.reset();
     }
     else {
-      //s_intake.set(false);
+      s_intake.set(false);
       m_intake.set(0);
       if(ball_timer.get() < 0.1)
       {
         m_belt.set(0);
         m_lifter.set(-0.45);
       }
-      else if((Math.abs(m_shooterEnc.getVelocity() - shooterTargetSpeed) < 100) && (shooterTargetSpeed > 0))
+      else if((Math.abs(m_shooterEnc.getVelocity() - shooterTargetSpeed) < 50) && (shooterTargetSpeed > 0))
       {
         m_lifter.set(0.75);
         if(ball_detect.getAverageValue() > 500){
