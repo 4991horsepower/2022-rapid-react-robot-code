@@ -49,6 +49,8 @@ import edu.wpi.first.wpilibj.Joystick;
 import edu.wpi.first.wpilibj.interfaces.Gyro;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj.util.Color;
+import edu.wpi.first.wpilibj.AddressableLEDBuffer;
+import edu.wpi.first.wpilibj.AddressableLED;
 
 /**
  * The VM is configured to automatically run this class, and to call the functions corresponding to
@@ -62,7 +64,7 @@ public class Robot extends TimedRobot {
 
   private XboxController m_driverController = new XboxController(0);
   private XboxController m_copilotContoller = new XboxController(1);
-  private Joystick m_joiboi = new Joystick(0);
+  //private Joystick m_joiboi = new Joystick(0);
 
   private CANSparkMax m_frontLeft = new CANSparkMax(1, MotorType.kBrushless);
   private CANSparkMax m_frontRight = new CANSparkMax(3, MotorType.kBrushless);  
@@ -98,6 +100,7 @@ public class Robot extends TimedRobot {
   private Solenoid fingy3 = new Solenoid(PneumaticsModuleType.REVPH, 3);
   private Solenoid fingy4 = new Solenoid(PneumaticsModuleType.REVPH, 4);
   private int stage = 0; // needs to be defined in a scope outside teleop
+  private int defcon = 0; //variable for going back down bars
 
   // sensor!!!!
   private DigitalInput revLeftLimitSwitch = new DigitalInput(1);
@@ -128,6 +131,11 @@ public class Robot extends TimedRobot {
 
   private String teamColor;
   private String colorString;
+
+  //led
+  private AddressableLED m_led = new AddressableLED(0);
+  private AddressableLEDBuffer m_ledBuffer = new AddressableLEDBuffer(30);
+
 
   // Autonomous Mode
   private Gyro m_gyro = new ADXRS450_Gyro();
@@ -165,7 +173,7 @@ public class Robot extends TimedRobot {
 
     //teamColor = new String("blue");
 
-    String[] auto_modes = {"None", "Auto 1", "Auto 2", "Auto 3", "Auto 4", "Auto 5"};
+    String[] auto_modes = {"None", "Auto 1", "Auto 2", "Auto 3", "Auto 4", "Auto 5", "Auto 6"};
     SmartDashboard.putStringArray("Auto List", auto_modes);
     
     m_frontLeft.restoreFactoryDefaults();
@@ -214,16 +222,21 @@ public class Robot extends TimedRobot {
     m_shooter.setInverted(true);
     m_shooter.setClosedLoopRampRate(0.1);
     m_shooterEnc = m_shooter.getEncoder();
-     m_shooterPIDController = m_shooter.getPIDController();
-    m_shooterPIDController.setFF(0.00025);
-    m_shooterPIDController.setP(0.0008);
-    m_shooterPIDController.setI(0.000001);
+    m_shooterPIDController = m_shooter.getPIDController();
+    m_shooterPIDController.setFF(0.000225); //0.00025
+    m_shooterPIDController.setP(0.001);
+    m_shooterPIDController.setI(0);
     m_shooterPIDController.setD(0.0);
     
     //colorator
     m_colorMatcher.addColorMatch(kBlueTarget);
     m_colorMatcher.addColorMatch(kRedTarget);
     m_colorMatcher.setConfidenceThreshold(.2);
+
+    //led boi
+    m_led.setLength(m_ledBuffer.getLength());
+    m_led.setData(m_ledBuffer);
+    //m_led.start();
 
     compressorator.enableAnalog(100, 115);
 
@@ -262,12 +275,13 @@ public class Robot extends TimedRobot {
 
   @Override
   public void autonomousInit() {
-    m_autoSelected = SmartDashboard.getString("Auto Selector", "Auto 5");
+    m_autoSelected = SmartDashboard.getString("Auto Selector", "Auto 6");
     System.out.println("Auto selected: " + m_autoSelected);
     String path = Filesystem.getDeployDirectory().toPath().resolve("paths/output").toString();
     File trajectory_dir = new File(path);
     File[] trajectoryJSON = trajectory_dir.listFiles();
 
+    m_climber.set(0.0);
     for(int i = 0; i < trajectoryJSON.length; i++){   
       try {
         Trajectory trajectory = new Trajectory();
@@ -303,6 +317,10 @@ public class Robot extends TimedRobot {
     else if (m_autoSelected.equals("Auto 5"))
     {
       autoState = autoStates.SHOOT;
+      m_odometry.resetPosition(trajectories.get("shootAndGo").getInitialPose(), m_gyro.getRotation2d());
+    }
+    else if (m_autoSelected.equals("Auto 6")){
+      autoState = autoStates.REVERSE;
       m_odometry.resetPosition(trajectories.get("shootAndGo").getInitialPose(), m_gyro.getRotation2d());
     }
     else {
@@ -381,13 +399,23 @@ public class Robot extends TimedRobot {
         intakeIn = true;
         shooterTargetSpeed = 0;
         if(auto_timer.get() > active_trajectory.getTotalTimeSeconds() + 0.5){
-          autoState = autoStates.STOP;
+          if (m_autoSelected.equals("Auto 6")){
+            autoState = autoStates.SHOOT;
+          }
+          else{
+            autoState = autoStates.STOP;
+          }
           auto_timer.reset();
         }
         break;
       case SHOOT:
         intakeIn = true;
-        shooterTargetSpeed = 1100;
+        if (m_autoSelected.equals("Auto 6")){
+          shooterTargetSpeed = 2000;
+        }
+        else{
+          shooterTargetSpeed = 1100;
+        }
         if(auto_timer.get() > 5)
         {
           if (m_autoSelected.equals("Auto 5"))
@@ -431,8 +459,11 @@ public class Robot extends TimedRobot {
   @Override
   public void teleopInit() {
     stage = 0;
+    defcon = 0;
     intakeIn = true;
     shooterTargetSpeed = 0;
+
+    m_climber.set(0.0);
 
     climb_timer.start();
     m_climber_enc.setPosition(0);
@@ -453,7 +484,7 @@ public class Robot extends TimedRobot {
     else{
       teamColor = new String("blue");
     }
-   // teamColor = new String("blue");
+    //teamColor = new String("blue");
   }
 
   private void runBallHandler(boolean active)
@@ -503,15 +534,13 @@ public class Robot extends TimedRobot {
       m_intake.set(0);
       if(ball_timer.get() < 0.1)
       {
-        m_belt.set(0);
+        m_belt.set(-0.6);//
         m_lifter.set(-0.45);
       }
-      else if((Math.abs(m_shooterEnc.getVelocity() - shooterTargetSpeed) < 50) && (shooterTargetSpeed > 0))
+      else if((Math.abs(m_shooterEnc.getVelocity() - shooterTargetSpeed) <100) && (shooterTargetSpeed > 0))
       {
         m_lifter.set(0.75);
-        if(ball_detect.getAverageValue() > 500){
-          m_belt.set(-0.6);
-        }
+        m_belt.set(-0.6);
       }
       else {
         m_belt.set(0);
@@ -525,8 +554,13 @@ public class Robot extends TimedRobot {
   /** This function is called periodically during operator control. */
   @Override
   public void teleopPeriodic() {
-    //System.out.println(teamColor);
     // lame drivetrain stuff i suppose - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+    for (int i = 0; i < m_ledBuffer.getLength(); i++) {
+      m_ledBuffer.setRGB(i, 255, 0, 0);
+   }
+   m_led.setData(m_ledBuffer);
+
+   
     double reverse = m_driverController.getLeftTriggerAxis();
     double forward = m_driverController.getRightTriggerAxis();
     double front_back = reverse < 0.01 ? forward : -reverse;
@@ -565,8 +599,8 @@ public class Robot extends TimedRobot {
         left = 0;
         break;
     }
-    m_frontLeft.set(left*0.25);
-    m_rearRight.set(right*0.25);
+    m_frontLeft.set(left*0.5);
+    m_rearRight.set(right*0.5);
     // end of the lame drivetrain stuff i suppose ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^    
 
     // int ache code - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
@@ -588,7 +622,7 @@ public class Robot extends TimedRobot {
      shooterTargetSpeed = 1100;
     }
     else if(highGoal){
-      shooterTargetSpeed = 2000;
+      shooterTargetSpeed = 1800;
     }
     else{
       shooterTargetSpeed = 0;
@@ -610,6 +644,7 @@ public class Robot extends TimedRobot {
     */
 
     // set fingers to one side open, rotate right side up to hit bar (so that only fingy1 hits the bar)
+    System.out.println(stage);
     if(m_copilotContoller.getAButton()){
       switch(stage){
         case 0:
@@ -619,6 +654,7 @@ public class Robot extends TimedRobot {
           {
             stage = 1;
           }
+          //stage = 1;
           break;
         case 1:
           // Climber is in position, open fingy 1, 2, and 3
@@ -628,7 +664,7 @@ public class Robot extends TimedRobot {
           fingy3.set(true);
           fingy4.set(false);
           if((revLeftLimitSwitch.get() == false) && (revRightLimitSwitch.get() == false))
-          {
+          {//m_driverController.getAButton()
             climb_timer.reset();
             stage = 2;
           }
@@ -873,6 +909,7 @@ public class Robot extends TimedRobot {
             fwdLeftLimitSwitch_l = false;
             fwdRightLimitSwitch_l = false;
             stage = 3;
+            defcon = 0;
           }
           break;
       }
@@ -880,6 +917,179 @@ public class Robot extends TimedRobot {
     else{
       m_climber.set(0);
     }
+    /*if(m_driverController.getBButton()){
+      stage = 1;
+    }*/
+
+    //make robot go back down bar (hopefully)
+    /*else if (m_copilotContoller.getBButton()){
+      switch(defcon){
+        case 0:
+          m_climber.set(0);
+          fingy1.set(false);
+          fingy2.set(true);
+          fingy3.set(true);
+          fingy4.set(false);
+          if (climb_timer.get() > 0.5){
+            fwdLeftLimitSwitch_l = false;
+            fwdRightLimitSwitch_l = false;
+            climb_timer.reset();
+            defcon = 1;
+          }
+          
+          break;
+        case 1:
+          m_climber.set(1.0);
+          fingy1.set(false);
+          fingy2.set(true);
+          fingy3.set(true);
+          fingy4.set(false);
+         
+          fwdLeftLimitSwitch_l |= (fwdLeftLimitSwitch.get() == false);
+          fwdRightLimitSwitch_l |= (fwdRightLimitSwitch.get() == false);
+
+          if(fwdLeftLimitSwitch_l && fwdRightLimitSwitch_l)
+          {
+            defcon = 2;
+            climb_timer.reset();
+          }
+          break;
+        case 2: // give fingy 3 time to close
+          m_climber.set(1.0);
+          fingy1.set(false);
+          fingy2.set(false);
+          fingy3.set(true);
+          fingy4.set(false);
+          if(climb_timer.get() > 0.75)
+          {
+            climb_timer.reset();
+            fwdLeftLimitSwitch_l = false;
+            fwdRightLimitSwitch_l = false;
+            defcon = 3;
+          }
+          break;
+        case 3://drift time
+          m_climber.set(0);
+          fingy1.set(false);
+          fingy2.set(false);
+          fingy3.set(true);
+          fingy4.set(false);
+          fwdLeftLimitSwitch_l |= (fwdLeftLimitSwitch.get() == false);
+          fwdRightLimitSwitch_l |= (fwdRightLimitSwitch.get() == false);
+          if(fwdLeftLimitSwitch_l && fwdRightLimitSwitch_l)
+          {
+            defcon = 4;
+            climb_timer.reset();
+          }
+          break;
+        case 4://robot grab onto both high and traversal
+          m_climber.set(0);
+          fingy1.set(false);
+          fingy2.set(false);
+          fingy3.set(false);
+          fingy4.set(false);
+          if(climb_timer.get() > 0.50){
+            climb_timer.reset();
+            revLeftLimitSwitch_l = false;
+            revRightLimitSwitch_l = false;
+            fwdLeftLimitSwitch_l = false;
+            fwdRightLimitSwitch_l = false;
+            defcon = 5;
+          }
+          break;
+        case 5://release traversal
+          m_climber.set(0);
+          fingy1.set(true);
+          fingy2.set(false);
+          fingy3.set(false);
+          fingy4.set(true);
+          if (climb_timer.get() > 0.50){
+            climb_timer.reset();
+            defcon = 6;
+          }
+          break;
+        case 6: //and they were swinging
+          m_climber.set(1.0);
+          fingy1.set(true);
+          fingy2.set(false);
+          fingy3.set(false);
+          fingy4.set(true);
+
+          revLeftLimitSwitch_l |= (revLeftLimitSwitch.get() == false);
+          revRightLimitSwitch_l |= (revRightLimitSwitch.get() == false);
+
+          if(revLeftLimitSwitch_l && revRightLimitSwitch_l)
+          {
+            defcon = 7;
+            climb_timer.reset();
+          }
+          break;
+        case 7://close fingy
+          m_climber.set(1.0);
+          fingy1.set(false);
+          fingy2.set(false);
+          fingy3.set(false);
+          fingy4.set(true);
+          if (climb_timer.get() > 0.75){
+            climb_timer.reset();
+            revLeftLimitSwitch_l = false;
+            revRightLimitSwitch_l = false;
+            defcon = 8;
+          }
+          break;
+        case 8://drop onto mid
+          m_climber.set(0);
+          fingy1.set(false);
+          fingy2.set(false);
+          fingy3.set(false);
+          fingy4.set(true);
+          revLeftLimitSwitch_l |= (revLeftLimitSwitch.get() == false);
+          revRightLimitSwitch_l |= (revRightLimitSwitch.get() == false);
+
+          if(revLeftLimitSwitch_l && revRightLimitSwitch_l)
+          {
+            defcon = 9;
+            climb_timer.reset();
+          }
+          break;
+        case 9://grab both high and mid
+          m_climber.set(0);
+          fingy1.set(false);
+          fingy2.set(false);
+          fingy3.set(false);
+          fingy4.set(false);
+          if (climb_timer.get() > 0.5){
+            climb_timer.reset();
+            defcon = 10;
+          }
+          break;
+        case 10://let go of high
+          m_climber.set(0);
+          fingy1.set(false);
+          fingy2.set(true);
+          fingy3.set(true);
+          fingy4.set(false);
+          if (climb_timer.get() > 0.5){
+            climb_timer.reset();
+            defcon = 11;
+          }
+          break;
+        case 11://motor down to floor
+          m_climber.set(m_copilotContoller.getLeftY());
+          fingy1.set(false);
+          fingy2.set(true);
+          fingy3.set(true);
+          fingy4.set(false);
+          if (climb_timer.get() > 3.0){
+            climb_timer.reset();
+            defcon = 0;
+            stage = 2;
+          }
+          break;
+      }
+    }*/
+    
+
     // end climbler code ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
     // ^ since this comment is related to the climber, please don't put it outside the teleop call
   } 
@@ -897,13 +1107,14 @@ public class Robot extends TimedRobot {
   public void testInit() {
     updateTeamColor();
   }
-
+;
   /** This function is called periodically during test mode. */
   @Override
   public void testPeriodic() {
-    
+    /*System.out.println(fwdLeftLimitSwitch.get() + " frontLeft " + revLeftLimitSwitch.get() + "revLeft" 
+    + fwdRightLimitSwitch.get() + " frontRight " + revRightLimitSwitch.get() + "revRight");*/
     double manual_climber = m_driverController.getLeftY();
-    if(Math.abs(manual_climber) < 0.25){
+    /*if(Math.abs(manual_climber) < 0.25){
       manual_climber = 0;
     }
 
@@ -918,7 +1129,13 @@ public class Robot extends TimedRobot {
     else
     {
       m_climber.set(0);
-    }  
+    }  **/
+    if (Math.abs(manual_climber) > 0.1){
+      m_climber.set(manual_climber);
+    }
+    else {
+      m_climber.set(0.0);
+    }
 
     if(m_driverController.getAButton()){
       fingy1.set(true);
